@@ -68,18 +68,11 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(colors.success)
-      .setTitle(`${emojis.success}  Warning Removed`)
-      .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
-      .addFields(
-        { name: `${emojis.member} User`,          value: `<@${targetUser.id}>\n\`${targetUser.tag}\``, inline: true },
-        { name: `${emojis.mod} Removed By`,       value: `<@${interaction.user.id}>`, inline: true },
-        { name: `${emojis.case} Warning #`,       value: `\`${warnId}\``, inline: true },
-        { name: `${emojis.log} Original Reason`,  value: warning.reason, inline: false },
-        { name: `${emojis.warning} Remaining`,    value: `\`${activeRemaining}\` active warning(s)`, inline: true },
-        { name: `${emojis.case} Case ID`,         value: `\`#${newCase.caseId}\``, inline: true },
-        { name: `${emojis.calendar} Time (IST)`,  value: formatIST(), inline: true },
+      .setDescription(
+        `${emojis.success}  **Warning #${warnId} removed** — <@${targetUser.id}> · \`${activeRemaining}\` active\n` +
+        `${emojis.log}  ${warning.reason}`
       )
-      .setFooter(makeFooter(client, `Case #${newCase.caseId}`))
+      .setFooter(makeFooter(client, `by ${interaction.user.username}`))
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
