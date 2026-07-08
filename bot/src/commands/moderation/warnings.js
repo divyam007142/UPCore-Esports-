@@ -45,19 +45,24 @@ module.exports = {
 
       activeWarns.slice(0, 10).forEach(w => {
         embed.addFields({
-          name: `${emojis.case} Warning #${w.warnId}`,
+          name: `#${w.warnId}  ·  ${w.reason.length > 55 ? w.reason.slice(0, 54) + '…' : w.reason}`,
           value: [
-            `> **Reason:** ${w.reason}`,
-            `> **Moderator:** \`${w.moderatorTag}\``,
-            `> **Date:** ${formatIST(w.createdAt)}`,
+            `> ${emojis.mod || '🛡️'} **Mod:** \`${w.moderatorTag}\``,
+            `> ${emojis.clock || '🕐'} **Date:** ${formatIST(w.createdAt)}`,
           ].join('\n'),
           inline: false,
         });
       });
 
       if (activeWarns.length > 10) {
-        embed.addFields({ name: `${emojis.info} Note`, value: `Showing 10 of ${activeWarns.length} warnings`, inline: false });
+        embed.addFields({ name: `${emojis.info} Note`, value: `Showing 10 of ${activeWarns.length} active warnings.`, inline: false });
       }
+
+      embed.addFields({
+        name: `${emojis.info} How to remove a warning`,
+        value: `Run \`/unwarn\`, select the user, and enter the **#number** shown above as \`warn_id\`.\nExample: to remove **#2**, use \`warn_id: 2\`.`,
+        inline: false,
+      });
     }
 
     await interaction.reply({ embeds: [embed] });
