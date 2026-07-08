@@ -1,23 +1,26 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { checkAdminRole } = require('../../utils/permissions');
 const { getAllCases } = require('../../services/caseService');
-const { colors, emojis } = require('../../config/config');
+const { colors } = require('../../config/config');
 const { discordTimestamp } = require('../../utils/time');
 const { makeFooter } = require('../../utils/embeds');
+const { e } = require('../../utils/emoji');
 
+// Action → accent colour (embed left bar)
 const ACTION_COLORS = {
-  BAN:      colors.error,
-  KICK:     colors.error,
-  WARN:     colors.warning,
-  MUTE:     colors.warning,
-  UNMUTE:   colors.success,
-  UNBAN:    colors.success,
-  VC_KICK:  colors.moderation,
-  VC_MUTE:  colors.moderation,
+  BAN:       colors.error,
+  KICK:      colors.error,
+  WARN:      colors.warning,
+  MUTE:      colors.warning,
+  UNMUTE:    colors.success,
+  UNBAN:     colors.success,
+  VC_KICK:   colors.moderation,
+  VC_MUTE:   colors.moderation,
   VC_DEAFEN: colors.moderation,
 };
 
-const ACTION_EMOJI = {
+// Action → semantic emoji key
+const ACTION_EMOJI_KEY = {
   BAN:       'ban',
   KICK:      'kick',
   WARN:      'warn',
@@ -29,6 +32,19 @@ const ACTION_EMOJI = {
   VC_DEAFEN: 'voice',
 };
 
+// Human-readable action label
+const ACTION_LABEL = {
+  BAN:       'Ban',
+  KICK:      'Kick',
+  WARN:      'Warn',
+  MUTE:      'Mute',
+  UNMUTE:    'Unmute',
+  UNBAN:     'Unban',
+  VC_KICK:   'VC Kick',
+  VC_MUTE:   'VC Mute',
+  VC_DEAFEN: 'VC Deafen',
+};
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('audit')
@@ -36,12 +52,12 @@ module.exports = {
     .addIntegerOption(o =>
       o.setName('limit')
         .setDescription('Number of cases to show (1–25, default 10)')
-        .setMinValue(1).setMaxValue(25).setRequired(false)
+        .setMinValue(1).setMaxValue(25).setRequired(false),
     )
     .addUserOption(o =>
       o.setName('moderator')
         .setDescription('Filter by a specific moderator')
-        .setRequired(false)
+        .setRequired(false),
     )
     .addStringOption(o =>
       o.setName('action')
@@ -55,7 +71,7 @@ module.exports = {
           { name: 'Unban',    value: 'UNBAN'    },
           { name: 'VC Kick',  value: 'VC_KICK'  },
         )
-        .setRequired(false)
+        .setRequired(false),
     ),
   cooldown: 5000,
 
@@ -68,35 +84,93 @@ module.exports = {
     const actFilter = interaction.options.getString('action');
 
     let cases = await getAllCases(interaction.guildId, 50);
-
     if (modFilter) cases = cases.filter(c => c.moderatorId === modFilter.id);
-    if (actFilter) cases = cases.filter(c => c.action === actFilter);
-
+    if (actFilter) cases = cases.filter(c => c.action    === actFilter);
     cases = cases.slice(0, limit);
 
+    // ── Empty state ─────────────────────────────────────────────────────────────
     if (!cases.length) {
-      return interaction.editReply({
-        embeds: [new EmbedBuilder()
-          .setColor(colors.neutral)
-          .setTitle(`${emojis.log}  Audit Log`)
-          .setDescription('No moderation actions found matching your filters.')
-          .setFooter(makeFooter(client))
-          .setTimestamp()],
+      const emptyEmbed = new EmbedBuilder()
+        .setColor(colors.neutral)
+        .setAuthor({
+          name:    `${interaction.guild.name} · Audit Log`,
+          iconURL: interaction.guild.iconURL({ extension: 'png', size: 64 }) ?? undefined,
+        })
+        .setDescription(
+          `${e('log')}  No moderation actions found` +
+          (modFilter ? ` by **${modFilter.username}**` : '') +
+          (actFilter ? ` of type **${ACTION_LABEL[actFilter] ?? actFilter}**` : '') + '.',
+        )
+        .setFooter(makeFooter(client))
+        .setTimestamp();
+      return interaction.editReply({ embeds: [emptyEmbed] });
+    }
+
+    // ── Case lines ──────────────────────────────────────────────────────────────
+    // Format: [emoji] `#0012` **Ban** · <@user> · mod: <@mod> · 3h ago
+    //         > reason text (truncated)
+    const lines = cases.map(c => {
+      const icon    = e(ACTION_EMOJI_KEY[c.action]) || '•';
+      const caseId  = `\`#${String(c.caseId).padStart(4, '0')}\``;
+      const label   = ACTION_LABEL[c.action] ?? c.action;
+      const time    = discordTimestamp(c.createdAt, 'R');
+      const reason  = (c.reason ?? 'No reason').length > 72
+        ? (c.reason ?? 'No reason').slice(0, 69) + '…'
+        : (c.reason ?? 'No reason');
+      return (
+        `${icon} ${caseId} **${label}** · <@${c.userId}> · mod: <@${c.moderatorId}> · ${time}\n` +
+        `> ${reason}`
+      );
+    });
+
+    // ── Summary breakdown ───────────────────────────────────────────────────────
+    const counts = {};
+    for (const c of cases) counts[c.action] = (counts[c.action] || 0) + 1;
+    const summaryParts = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([action, n]) => {
+        const icon = e(ACTION_EMOJI_KEY[action]) || '';
+        return `${icon} **${n}** ${ACTION_LABEL[action] ?? action}`;
+      });
+
+    // ── Filter context line ─────────────────────────────────────────────────────
+    const filterBits = [];
+    if (modFilter) filterBits.push(`moderator: **${modFilter.username}**`);
+    if (actFilter) filterBits.push(`action: **${ACTION_LABEL[actFilter] ?? actFilter}**`);
+
+    // ── Embed colour: action-specific when filtered, default otherwise ──────────
+    const accentColor = actFilter
+      ? (ACTION_COLORS[actFilter] ?? colors.moderation)
+      : colors.moderation;
+
+    // ── Build embed ─────────────────────────────────────────────────────────────
+    const embed = new EmbedBuilder()
+      .setColor(accentColor)
+      .setAuthor({
+        name:    `${interaction.guild.name} · Audit Log`,
+        iconURL: interaction.guild.iconURL({ extension: 'png', size: 64 }) ?? undefined,
+      })
+      .setTitle(
+        `${e('log')}  Last ${cases.length} Action${cases.length !== 1 ? 's' : ''}` +
+        (filterBits.length ? `  ·  ${filterBits.join('  ·  ')}` : ''),
+      )
+      .setDescription(lines.join('\n\n'));
+
+    if (summaryParts.length > 1) {
+      embed.addFields({
+        name:   `${e('stats') || '📊'}  Breakdown`,
+        value:  summaryParts.join('   '),
+        inline: false,
       });
     }
 
-    const lines = cases.map(c => {
-      const actionEmoji = emojis[ACTION_EMOJI[c.action]] || emojis.log;
-      const caseId = `\`#${String(c.caseId).padStart(4, '0')}\``;
-      const time   = discordTimestamp(c.createdAt, 'R');
-      return `${actionEmoji} ${caseId} **${c.action}** — <@${c.userId}> by <@${c.moderatorId}> ${time}\n> ${c.reason}`;
-    });
-
-    const embed = new EmbedBuilder()
-      .setColor(colors.moderation)
-      .setTitle(`${emojis.log}  Audit Log — Last ${cases.length} Action${cases.length !== 1 ? 's' : ''}`)
-      .setDescription(lines.join('\n\n'))
-      .setFooter(makeFooter(client, modFilter ? `Filtered by ${modFilter.username}` : `${cases.length} result${cases.length !== 1 ? 's' : ''}`))
+    embed
+      .setFooter(makeFooter(
+        client,
+        modFilter
+          ? `Filtered by ${modFilter.username}  ·  ${cases.length} result${cases.length !== 1 ? 's' : ''}`
+          : `${cases.length} result${cases.length !== 1 ? 's' : ''}`,
+      ))
       .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });
