@@ -12,14 +12,14 @@ const GUIDE_IMG_PATH = path.join(__dirname, '../../../assets/commands-guide.webp
 
 function getCategories() {
   return {
-    moderation:  { label: 'Moderation',       description: 'Ban, kick, mute, warn, hide, purge, audit log and more',   emoji: e('ban')     },
-    information: { label: 'Information',      description: 'Server info, user info, invites, member count, boosters',   emoji: e('info')    },
-    ticket:      { label: 'Ticket System',    description: 'Open, close, lock, add/remove users, escalate tickets',     emoji: e('case')    },
-    utility:     { label: 'Utility',          description: 'AFK, reminders, translate, say, ping and more',             emoji: e('clock')   },
-    role:        { label: 'Role Management',  description: 'Add/remove roles, bulk role actions',                       emoji: e('role')    },
-    voice:       { label: 'Voice',            description: 'VC mute, deafen, kick, move, move all members',             emoji: e('voice')   },
-    fun:         { label: 'Fun',              description: 'Ship compatibility card and more fun commands',              emoji: e('fire')    },
-    tournament:  { label: 'Tournament',       description: 'Prefix commands for tournament staff (screenshot, dodge…)',  emoji: e('star')    },
+    moderation:  { label: 'Moderation',       description: 'Ban, kick, mute, warn, hide, purge, audit log and more',              emoji: e('ban')     },
+    information: { label: 'Information',      description: 'Server info, user info, invites, member count, boosters',              emoji: e('info')    },
+    ticket:      { label: 'Ticket System',    description: 'Open, close, lock, add/remove users, escalate tickets',                emoji: e('case')    },
+    utility:     { label: 'Utility',          description: 'AFK, reminders, translate, starboard config, deploy and more',         emoji: e('clock')   },
+    role:        { label: 'Role Management',  description: 'Add/remove roles, bulk role actions',                                  emoji: e('role')    },
+    voice:       { label: 'Voice',            description: 'VC mute, deafen, kick, move, move all members',                        emoji: e('voice')   },
+    fun:         { label: 'Fun',              description: 'Ship compatibility card, anime images (neko & waifu) and more',        emoji: e('fire')    },
+    tournament:  { label: 'Tournament',       description: 'Prefix commands for tournament staff (screenshot, dodge, spotify…)',   emoji: e('star')    },
   };
 }
 
@@ -138,11 +138,17 @@ module.exports = {
               value: 'Notify a player they have posted in the wrong channel. Mention the player to ping them.',
               inline: false,
             },
+            {
+              name:  `${e('music') || '🎵'} \`~spotify\``,
+              value: 'Shows how the **UPC Spotify** feature works — requirements: visible status, Spotify connected to Discord, song actively playing. No role needed, anyone can run this.',
+              inline: false,
+            },
           );
           embed.setDescription(
             `${e('info')} ${categoryInfo.description}\n\n` +
-            `${e('log')} **3** command(s) in this category\n\n` +
-            `> Prefix: \`~\`  —  Mention a player after the command to ping them.`,
+            `${e('log')} **4** command(s) in this category\n\n` +
+            `> Prefix: \`~\`  —  Mention a player after the command to ping them.\n` +
+            `> \`~spotify\` is public — no staff role required.`,
           );
         } else if (cmds.size === 0) {
           embed.setDescription(
