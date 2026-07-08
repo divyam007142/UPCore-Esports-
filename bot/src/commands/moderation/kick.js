@@ -23,7 +23,7 @@ module.exports = {
 
     if (targetUser.id === interaction.user.id) {
       return interaction.reply({
-        embeds: [new EmbedBuilder().setColor(colors.error).setTitle(`${emojis.error}  Cannot Kick Yourself`).setDescription('You cannot kick yourself.').setFooter(makeFooter(client)).setTimestamp()],
+        embeds: [new EmbedBuilder().setColor(colors.error).setDescription(`${emojis.error}  You cannot kick yourself.`).setFooter(makeFooter(client))],
         ephemeral: true,
       });
     }
@@ -37,11 +37,8 @@ module.exports = {
       return interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(colors.error)
-          .setTitle(`${emojis.member}  User Not Found`)
-          .setDescription('That user is not in this server or could not be found.')
-          .addFields({ name: `${emojis.info} User ID`, value: `\`${targetUser.id}\``, inline: true })
-          .setFooter(makeFooter(client))
-          .setTimestamp()],
+          .setDescription(`${emojis.error}  That user is not in this server.`)
+          .setFooter(makeFooter(client))],
       });
     }
 
@@ -80,16 +77,11 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(colors.moderation)
-      .setTitle(`${emojis.kick}  Member Kicked`)
-      .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
-      .addFields(
-        { name: `${emojis.member} User`,         value: `<@${targetUser.id}>\n\`${targetUser.tag}\`\n\`${targetUser.id}\``, inline: true },
-        { name: `${emojis.mod} Moderator`,       value: `<@${interaction.user.id}>`, inline: true },
-        { name: `${emojis.case} Case ID`,        value: `\`#${String(newCase.caseId).padStart(4,'0')}\``, inline: true },
-        { name: `${emojis.log} Reason`,          value: reason, inline: false },
-        { name: `${emojis.calendar} Time (IST)`, value: formatIST(), inline: true },
+      .setDescription(
+        `${emojis.kick} <@${targetUser.id}> has been **kicked**` +
+        (reason !== 'No reason provided' ? ` · Reason: ${reason}` : '')
       )
-      .setFooter(makeFooter(client, `Case #${String(newCase.caseId).padStart(4,'0')}`))
+      .setFooter(makeFooter(client, `by ${interaction.user.username}  ·  Case #${String(newCase.caseId).padStart(4, '0')}`))
       .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });
