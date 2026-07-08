@@ -61,9 +61,9 @@ module.exports = {
         .setDescription(`You have received a warning in **${interaction.guild.name}**.`)
         .setThumbnail(interaction.guild.iconURL({ dynamic: true }))
         .addFields(
-          { name: `${emojis.log} Reason`,          value: reason },
-          { name: `${emojis.case} Warning #`,       value: `\`${warnId}\``, inline: true },
-          { name: `${emojis.warning} Total Warns`,  value: `\`${activeCount}\``, inline: true },
+          { name: `${emojis.log} Reason`,         value: reason },
+          { name: `${emojis.warn} Warning No`,      value: `\`#${warnId}\``, inline: true },
+          { name: `${emojis.warning} Total Warns`, value: `\`${activeCount}\``, inline: true },
         )
         .setFooter({ text: 'UPCORE Esports — Please review the server rules to avoid further warnings' })
         .setTimestamp();
@@ -76,7 +76,7 @@ module.exports = {
         `${emojis.warn} <@${targetUser.id}> has been **warned** · Reason: ${reason}` +
         (thresholdMsg ? `\n${emojis.warning} ${thresholdMsg}` : '')
       )
-      .setFooter(makeFooter(client, `by ${interaction.user.username}  ·  Case #${String(newCase.caseId).padStart(4, '0')}  ·  Warn #${warnId}`))
+      .setFooter(makeFooter(client, `by ${interaction.user.username}  ·  Warn #${warnId}`))
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
