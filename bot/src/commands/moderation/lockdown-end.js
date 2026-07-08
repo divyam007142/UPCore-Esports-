@@ -41,10 +41,8 @@ module.exports = {
       return interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(colors.warning)
-          .setTitle(`${emojis.unlock}  Not Locked`)
-          .setDescription(`${target} is **not locked** — there is no active lockdown to end.`)
-          .setFooter(makeFooter(client))
-          .setTimestamp()],
+          .setDescription(`${emojis.unlock}  ${target} is not locked — nothing to end.`)
+          .setFooter(makeFooter(client))],
       });
     }
 
@@ -78,17 +76,12 @@ module.exports = {
     // ── Reply ─────────────────────────────────────────────────────────────────
     const embed = new EmbedBuilder()
       .setColor(colors.success)
-      .setTitle(`${emojis.unlock}  Lockdown Ended`)
       .setDescription(
-        `${target} has been **unlocked** — members can send messages again.` +
-        (hadTimer ? `\n${emojis.clock}  The auto-unlock timer has been cancelled.` : '')
+        `${emojis.unlock} <#${target.id}> has been **unlocked**` +
+        (hadTimer ? ` · Auto-unlock timer cancelled` : '') +
+        (reason !== 'Lockdown ended by staff' ? ` · Reason: ${reason}` : '')
       )
-      .addFields(
-        { name: `${emojis.log} Reason`,      value: reason, inline: false },
-        { name: `${emojis.mod} Moderator`,   value: `<@${interaction.user.id}>`, inline: true },
-        { name: `${emojis.channel} Channel`, value: `${target}`, inline: true },
-      )
-      .setFooter(makeFooter(client, 'Lockdown Ended'))
+      .setFooter(makeFooter(client, `by ${interaction.user.username}`))
       .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });
