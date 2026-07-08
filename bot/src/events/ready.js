@@ -1,4 +1,4 @@
-const { Events, ActivityType } = require('discord.js');
+const { Events, ActivityType, REST, Routes } = require('discord.js');
 const { logReady } = require('../utils/console');
 const { startReminderService } = require('../services/reminderService');
 const { loadEmojis, loadedNames } = require('../utils/emoji');
