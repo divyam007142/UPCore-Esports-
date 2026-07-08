@@ -71,6 +71,39 @@ async function handleWrongChannel(message, mentionStr) {
     .setTimestamp();
 }
 
+// ── ~spotify — public, no role required ──────────────────────────────────────
+async function handleSpotify(message) {
+  return new EmbedBuilder()
+    .setColor(0x1DB954)
+    .setAuthor({
+      name:    'UPC • Spotify Integration',
+      iconURL: message.client.user.displayAvatarURL(),
+    })
+    .setTitle('How UPC detects your Spotify')
+    .setDescription(
+      `Type \`UPC\` in any channel and the bot will react 🎵 and show your now-playing card — ` +
+      `**but only if all three requirements below are met.**`,
+    )
+    .addFields(
+      {
+        name:  '1️⃣  Your status must not be Invisible',
+        value: '> You **cannot** be on **Invisible / Offline** mode.\n' +
+               '> Set your status to **Online**, **Idle**, or **Do Not Disturb**.',
+      },
+      {
+        name:  '2️⃣  Spotify must be connected to Discord',
+        value: '> Go to **User Settings → Connections** and link your Spotify account.\n' +
+               '> Make sure **"Display on profile"** is toggled **on**.',
+      },
+      {
+        name:  '3️⃣  You must be actively playing a song',
+        value: '> Spotify must be **open and playing** at the moment you type `UPC`.\n' +
+               '> Paused or stopped music will **not** be detected.',
+      },
+    )
+    .setFooter({ text: 'UPCORE Esports • Type UPC while a song is playing to show it off 🎶' });
+}
+
 const PREFIX_HANDLERS = {
   'dodge':         handleDodge,
   'screenshot':    handleScreenshot,
@@ -84,10 +117,19 @@ module.exports = {
     if (!message.guild) return;
     if (message.author.bot) return;
 
-    // ── Prefix commands (~dodge, ~screenshot, ~wrong-channel) ─────────────────
+    // ── Prefix commands (~dodge, ~screenshot, ~wrong-channel, ~spotify) ─────────
     if (message.content.startsWith(PREFIX)) {
       const parts   = message.content.slice(PREFIX.length).trim().split(/\s+/);
       const cmdName = parts[0]?.toLowerCase();
+
+      // ~spotify is public — no role required
+      if (cmdName === 'spotify') {
+        try {
+          const embed = await handleSpotify(message);
+          await message.reply({ embeds: [embed] });
+        } catch { }
+        return;
+      }
 
       if (cmdName && PREFIX_HANDLERS[cmdName]) {
         const adminRoleId = process.env.ADMIN_ROLE_ID;
@@ -116,58 +158,81 @@ module.exports = {
       const member  = message.member;
       const spotify = member?.presence?.activities?.find(a => a.name === 'Spotify');
 
+      // Helper: extract emoji ID (or unicode) for message.react()
+      const reactEmoji = (str, fallback) => {
+        if (str) {
+          const m = str.match(/<a?:[^:]+:(\d+)>/);
+          if (m) return m[1];           // app emoji ID
+          if (str.length <= 8) return str; // plain unicode
+        }
+        return fallback;
+      };
+
       if (!spotify) {
-        // No song playing — react with exclamation emoji only
-        const exEmoji = e('exclaim');
-        await message.react(exEmoji || '❗').catch(() => {});
+        // No song playing — react with application exclaim emoji
+        await message.react(reactEmoji(e('exclaim'), '❗')).catch(() => {});
         return;
       }
 
-      // Song is playing — react with music emoji
+      // Song is playing — react to original message with music emoji
       const musicEmoji = e('music');
-      await message.react(musicEmoji || '🎵').catch(() => {});
+      await message.react(reactEmoji(musicEmoji, '🎵')).catch(() => {});
 
-      const songName = spotify.details || 'Unknown Song';
-      const artist   = (spotify.state || 'Unknown Artist').replace(/;/g, ',');
-      const trackId  = spotify.syncId;
-      const trackUrl = trackId ? `https://open.spotify.com/track/${trackId}` : null;
+      const songName  = spotify.details || 'Unknown Song';
+      const artist    = (spotify.state  || 'Unknown Artist').replace(/;/g, ',');
+      const trackId   = spotify.syncId;
+      const trackUrl  = trackId ? `https://open.spotify.com/track/${trackId}` : null;
+      const artistUrl = `https://open.spotify.com/search/${encodeURIComponent(artist)}`;
 
       // Album art — largeImage format: "spotify:<albumImageId>"
       const rawImg   = spotify.assets?.largeImage;
       const albumId  = rawImg?.startsWith('spotify:') ? rawImg.slice(8) : null;
       const albumArt = albumId ? `https://i.scdn.co/image/${albumId}` : null;
 
-      // Spotify emoji for embed author & button (from application emojis)
-      const spotifyEmoji   = e('spotify');                // full string e.g. <:spotify:123>
-      const spotifyPartial = emojiPartial('spotify');     // { id, name } for button
+      // Application emojis
+      const spotifyPartial = emojiPartial('spotify');
       const musicStr       = musicEmoji || '🎵';
 
-      // Build embed
+      // Embed author icon: use the CDN URL of the Spotify app emoji so it
+      // actually renders — Discord ignores custom emoji strings in author names.
+      const spotifyIconUrl = spotifyPartial
+        ? `https://cdn.discordapp.com/emojis/${spotifyPartial.id}.png?size=32`
+        : null;
+
+      // ── Content line (above embed) ──────────────────────────────────────────
+      const songLink    = trackUrl ? `[**${songName}**](${trackUrl})` : `**${songName}**`;
+      const artistLink  = `[**${artist}**](${artistUrl})`;
+      const contentLine = `${musicStr} <@${message.author.id}> is playing ${songLink} by ${artistLink}`;
+
+      // ── Spotify-style embed ─────────────────────────────────────────────────
+      const authorOpts = { name: 'Spotify' };
+      if (spotifyIconUrl) authorOpts.iconURL = spotifyIconUrl;
+
       const embed = new EmbedBuilder()
         .setColor(0x1DB954)
-        .setAuthor({ name: `${spotifyEmoji ? spotifyEmoji + '  ' : ''}Spotify` })
-        .setDescription(
-          `${musicStr}  <@${message.author.id}> is listening to ` +
-          (trackUrl ? `**[${songName}](${trackUrl})**` : `**${songName}**`) +
-          `  by  **${artist}**`
-        )
-        .setFooter({ text: 'Spotify • Now Playing' })
-        .setTimestamp();
+        .setAuthor(authorOpts)
+        .setTitle(songName)
+        .setURL(trackUrl || 'https://open.spotify.com')
+        .setDescription(`by **${artist}**`);
 
       if (albumArt) embed.setThumbnail(albumArt);
 
-      // "Listen on Spotify" link button
+      // ── "Play on Spotify" button ────────────────────────────────────────────
       const btn = new ButtonBuilder()
-        .setLabel('Listen on Spotify')
+        .setLabel('Play on Spotify')
         .setStyle(ButtonStyle.Link)
         .setURL(trackUrl || 'https://open.spotify.com');
 
       if (spotifyPartial) btn.setEmoji(spotifyPartial);
-      else                btn.setEmoji({ name: '🎵' });
+      else                btn.setEmoji({ name: '▶️' });
 
       const row = new ActionRowBuilder().addComponents(btn);
 
-      await message.reply({ embeds: [embed], components: [row] }).catch(() => {});
+      await message.reply({
+        content:    contentLine,
+        embeds:     [embed],
+        components: [row],
+      }).catch(() => {});
       return;
     }
 
