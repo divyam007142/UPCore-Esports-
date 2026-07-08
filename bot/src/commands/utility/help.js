@@ -12,14 +12,14 @@ const GUIDE_IMG_PATH = path.join(__dirname, '../../../assets/commands-guide.webp
 
 function getCategories() {
   return {
-    moderation:  { label: 'Moderation',       description: 'Ban, kick, mute, warn, timed lockdown, cases and more', emoji: e('ban')     },
-    information: { label: 'Information',      description: 'Server info, user info, avatar, banner',                emoji: e('info')    },
-    ticket:      { label: 'Ticket System',    description: 'Open, close, lock, add/remove users, escalate',        emoji: e('case')    },
-    utility:     { label: 'Utility',          description: 'AFK, reminders, translate, say and more',              emoji: e('clock')   },
-    role:        { label: 'Role Management',  description: 'Add/remove roles, bulk role actions',                  emoji: e('role')    },
-    voice:       { label: 'Voice',            description: 'VC mute, deafen, kick, move',                          emoji: e('voice')   },
-    tournament:  { label: 'Tournament',       description: 'Staff tools for tournament management',                 emoji: e('star')    },
-    config:      { label: 'Configuration',    description: 'Bot config and logging setup',                         emoji: e('config')  },
+    moderation:  { label: 'Moderation',       description: 'Ban, kick, mute, warn, hide, purge, audit log and more',   emoji: e('ban')     },
+    information: { label: 'Information',      description: 'Server info, user info, invites, member count, boosters',   emoji: e('info')    },
+    ticket:      { label: 'Ticket System',    description: 'Open, close, lock, add/remove users, escalate tickets',     emoji: e('case')    },
+    utility:     { label: 'Utility',          description: 'AFK, reminders, translate, say, ping and more',             emoji: e('clock')   },
+    role:        { label: 'Role Management',  description: 'Add/remove roles, bulk role actions',                       emoji: e('role')    },
+    voice:       { label: 'Voice',            description: 'VC mute, deafen, kick, move, move all members',             emoji: e('voice')   },
+    fun:         { label: 'Fun',              description: 'Ship compatibility card and more fun commands',              emoji: e('fire')    },
+    tournament:  { label: 'Tournament',       description: 'Prefix commands for tournament staff (screenshot, dodge…)',  emoji: e('star')    },
   };
 }
 
@@ -40,7 +40,7 @@ function getSelectOptions(CATEGORIES) {
     };
     const ep = emojiPartial(
       { moderation: 'ban', information: 'info', ticket: 'case', utility: 'clock',
-        role: 'role', voice: 'voice', tournament: 'star', config: 'config' }[key],
+        role: 'role', voice: 'voice', fun: 'fire', tournament: 'star' }[key],
     );
     if (ep) opt.emoji = ep;
     return opt;
@@ -118,10 +118,6 @@ module.exports = {
         const embed = new EmbedBuilder()
           .setColor(colors.primary)
           .setTitle(`${categoryInfo.emoji}  ${categoryInfo.label}`)
-          .setDescription(
-            `${e('info')} ${categoryInfo.description}\n\n` +
-            `${e('log')} **${cmds.size}** command(s) in this category`,
-          )
           .setFooter(makeFooter(client, 'Use /command to run'))
           .setTimestamp();
 
@@ -149,15 +145,20 @@ module.exports = {
             `> Prefix: \`~\`  —  Mention a player after the command to ping them.`,
           );
         } else if (cmds.size === 0) {
-          embed.addFields({ name: 'No Commands', value: 'No commands found in this category.', inline: false });
+          embed.setDescription(
+            `${e('info')} ${categoryInfo.description}\n\n` +
+            `${e('log')} No commands found in this category.`,
+          );
         } else {
-          cmds.forEach(cmd => {
-            embed.addFields({
-              name:   `${e('log')} \`/${cmd.data.name}\``,
-              value:  `${cmd.data.description || 'No description'}\n${buildUsage(cmd)}`,
-              inline: true,
-            });
-          });
+          const cmdLines = cmds.map(cmd => {
+            const usage = buildUsage(cmd);
+            return `${e('log')} ${usage}\n> ${cmd.data.description || 'No description'}`;
+          }).join('\n');
+          embed.setDescription(
+            `${e('info')} ${categoryInfo.description}\n` +
+            `${e('log')} **${cmds.size}** command(s)\n\n` +
+            cmdLines,
+          );
         }
 
         const backRow = new ActionRowBuilder().addComponents(
