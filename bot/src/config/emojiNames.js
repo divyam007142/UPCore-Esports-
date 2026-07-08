@@ -67,6 +67,12 @@ const EMOJI_NAMES = {
   time:       '8810datetime',            // datetime = time
   star:       '985872star',              // star icon
   fire:       '5186shinybluesparkles',   // sparkles ≈ fire/hype
+  // ── UPC Spotify trigger ─────────────────────────────────────────────────────
+  // Replace the right-hand values with the exact names of emojis you uploaded
+  // to your Discord Application (Developer Portal → Your App → Emojis).
+  music:      'music',                   // music note  — used for reaction & embed
+  spotify:    'spotify',                 // Spotify logo — used in embed author & button
+  exclaim:    'exclaim',                 // exclamation  — reaction when no song playing
 };
 
 module.exports = { EMOJI_NAMES };
