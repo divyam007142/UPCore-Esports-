@@ -70,10 +70,8 @@ module.exports = {
       return interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(colors.warning)
-          .setTitle(`${emojis.warning}  Invalid Channel`)
-          .setDescription(`${target} is not a text channel and cannot be locked.`)
-          .setFooter(makeFooter(client))
-          .setTimestamp()],
+          .setDescription(`${emojis.warning}  ${target} is not a text channel and cannot be locked.`)
+          .setFooter(makeFooter(client))],
       });
     }
 
@@ -83,13 +81,8 @@ module.exports = {
       return interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(colors.warning)
-          .setTitle(`${emojis.warning}  Invalid Duration`)
-          .setDescription(
-            `\`${durStr}\` is not a valid duration.\n\n` +
-            `**Valid formats:** \`30s\` · \`5m\` · \`1h\` · \`2d\``
-          )
-          .setFooter(makeFooter(client))
-          .setTimestamp()],
+          .setDescription(`${emojis.warning}  Invalid duration \`${durStr}\` — use \`30s\`, \`5m\`, \`1h\`, \`2d\`.`)
+          .setFooter(makeFooter(client))],
       });
     }
 
@@ -98,10 +91,8 @@ module.exports = {
       return interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(colors.warning)
-          .setTitle(`${emojis.warning}  Duration Too Long`)
-          .setDescription('Maximum lockdown duration is **7 days**.')
-          .setFooter(makeFooter(client))
-          .setTimestamp()],
+          .setDescription(`${emojis.warning}  Maximum lockdown duration is **7 days**.`)
+          .setFooter(makeFooter(client))],
       });
     }
 
@@ -113,10 +104,8 @@ module.exports = {
       return interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(colors.warning)
-          .setTitle(`${emojis.lock}  Already Locked`)
-          .setDescription(`${target} is **already locked**.`)
-          .setFooter(makeFooter(client))
-          .setTimestamp()],
+          .setDescription(`${emojis.lock}  ${target} is already locked.`)
+          .setFooter(makeFooter(client))],
       });
     }
 
@@ -168,16 +157,11 @@ module.exports = {
     // ── Reply ─────────────────────────────────────────────────────────────────
     const embed = new EmbedBuilder()
       .setColor(colors.error)
-      .setTitle(`${emojis.lock}  Channel Locked`)
-      .setDescription(`${target} has been **locked** — members cannot send messages.`)
-      .addFields(
-        { name: `${emojis.log} Reason`,          value: reason, inline: false },
-        { name: `${emojis.mod} Moderator`,        value: `<@${interaction.user.id}>`, inline: true },
-        { name: `${emojis.channel} Channel`,      value: `${target}`, inline: true },
-        { name: `${emojis.clock} Duration`,       value: formatDuration(durationMs), inline: true },
-        { name: `${emojis.clock} Auto-Unlocks`,   value: `<t:${Math.floor(endsAt / 1000)}:R>`, inline: true },
+      .setDescription(
+        `${emojis.lock} <#${target.id}> has been **locked** for \`${formatDuration(durationMs)}\` — unlocks <t:${Math.floor(endsAt / 1000)}:R>` +
+        (reason !== 'No reason provided' ? ` · Reason: ${reason}` : '')
       )
-      .setFooter(makeFooter(client, 'Lockdown'))
+      .setFooter(makeFooter(client, `by ${interaction.user.username}`))
       .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });
