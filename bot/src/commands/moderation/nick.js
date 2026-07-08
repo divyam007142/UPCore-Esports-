@@ -25,14 +25,7 @@ module.exports = {
       member = await interaction.guild.members.fetch(targetUser.id);
     } catch {
       return interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(colors.error)
-            .setTitle(`${emojis.cross}  User Not Found`)
-            .setDescription('That user is not in this server.')
-            .setFooter(makeFooter(client))
-            .setTimestamp(),
-        ],
+        embeds: [new EmbedBuilder().setColor(colors.error).setDescription(`${emojis.cross}  That user is not in this server.`).setFooter(makeFooter(client))],
         ephemeral: true,
       });
     }
@@ -44,15 +37,10 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(colors.info)
-      .setTitle(`${emojis.nick}  Nickname ${nickname ? 'Updated' : 'Reset'}`)
-      .setThumbnail(targetUser.displayAvatarURL({ size: 128 }))
-      .addFields(
-        { name: `${emojis.member}  User`,       value: `<@${targetUser.id}>\n\`${targetUser.username}\``, inline: true },
-        { name: `${emojis.mod}  Changed By`,    value: `<@${interaction.user.id}>`,                       inline: true },
-        { name: `${emojis.cross}  Before`,      value: `\`${oldNick}\``,                                  inline: true },
-        { name: `${emojis.check}  After`,       value: `\`${newNick}\``,                                  inline: true },
+      .setDescription(
+        `${emojis.nick} <@${targetUser.id}>'s nickname has been **${nickname ? 'updated' : 'reset'}** · \`${oldNick}\` → \`${newNick}\``
       )
-      .setFooter(makeFooter(client))
+      .setFooter(makeFooter(client, `by ${interaction.user.username}`))
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
