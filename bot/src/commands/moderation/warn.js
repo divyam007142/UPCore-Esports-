@@ -25,7 +25,7 @@ module.exports = {
 
     if (targetUser.id === interaction.user.id) {
       return interaction.reply({
-        embeds: [new EmbedBuilder().setColor(colors.error).setTitle(`${emojis.error}  Cannot Warn Yourself`).setDescription('You cannot warn yourself.').setFooter(makeFooter(client)).setTimestamp()],
+        embeds: [new EmbedBuilder().setColor(colors.error).setDescription(`${emojis.error}  You cannot warn yourself.`).setFooter(makeFooter(client))],
         ephemeral: true,
       });
     }
@@ -72,22 +72,13 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(colors.warning)
-      .setTitle(`${emojis.warn}  Member Warned`)
-      .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
-      .addFields(
-        { name: `${emojis.member} User`,         value: `<@${targetUser.id}>\n\`${targetUser.tag}\`\n\`${targetUser.id}\``, inline: true },
-        { name: `${emojis.case} Warning #`,      value: `\`${warnId}\``, inline: true },
-        { name: `${emojis.log} Reason`,          value: reason, inline: false },
-        { name: `${emojis.warning} Total Warns`, value: `\`${activeCount}\` active`, inline: true },
-        { name: `${emojis.case} Case ID`,        value: `\`#${String(newCase.caseId).padStart(4,'0')}\``, inline: true },
-        { name: `${emojis.calendar} Time (IST)`, value: formatIST(), inline: true },
-      );
+      .setDescription(
+        `${emojis.warn} <@${targetUser.id}> has been **warned** · Reason: ${reason}` +
+        (thresholdMsg ? `\n${emojis.warning} ${thresholdMsg}` : '')
+      )
+      .setFooter(makeFooter(client, `by ${interaction.user.username}  ·  Case #${String(newCase.caseId).padStart(4, '0')}  ·  Warn #${warnId}`))
+      .setTimestamp();
 
-    if (thresholdMsg) {
-      embed.addFields({ name: `${emojis.warning} Notice`, value: thresholdMsg, inline: false });
-    }
-
-    embed.setFooter(makeFooter(client, `Case #${String(newCase.caseId).padStart(4,'0')}`)).setTimestamp();
     await interaction.reply({ embeds: [embed] });
   },
 };
