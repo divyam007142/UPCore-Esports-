@@ -12,6 +12,7 @@ module.exports = {
     // Detect invite used
     let usedInvite = null;
     let inviter = null;
+    let isVanity = false;
     try {
       const newInvites = await guild.invites.fetch();
       const cachedInvites = client.invites.get(guild.id) || new Map();
@@ -24,6 +25,23 @@ module.exports = {
       }
       client.invites.set(guild.id, new Map(newInvites.map(inv => [inv.code, inv.uses])));
     } catch (e) { /* no permission */ }
+
+    // Detect vanity URL if no regular invite matched
+    if (!usedInvite && guild.vanityURLCode) {
+      try {
+        const vanityKey = `_vanity_${guild.id}`;
+        const vanityData = await guild.fetchVanityData();
+        const cachedUses = client.invites.get(vanityKey) ?? null;
+        // On first run cachedUses is null — still flag as vanity since no regular invite matched
+        if (cachedUses === null || vanityData.uses > cachedUses) isVanity = true;
+        client.invites.set(vanityKey, vanityData.uses);
+      } catch { /* no MANAGE_GUILD permission or no vanity */ }
+    }
+
+    // Fallback: if still no match and guild has a vanity URL, assume vanity
+    if (!usedInvite && !isVanity && guild.vanityURLCode) {
+      isVanity = true;
+    }
 
     const accountAge = getAccountAge(member.user.createdAt);
 
@@ -84,19 +102,21 @@ module.exports = {
     // Log welcome event
     await logWelcome(client, guild, member, {
       accountAge,
-      inviteCode: usedInvite?.code || null,
-      inviter,
+      inviteCode: isVanity ? guild.vanityURLCode : (usedInvite?.code || null),
+      inviter:    isVanity ? null : inviter,
+      isVanity,
     });
 
-    // Log invite usage
-    if (usedInvite) {
+    // Log invite usage (regular invite or vanity)
+    if (usedInvite || isVanity) {
       const { logInvite } = require('../services/logService');
       await logInvite(client, guild, {
-        user: member.user.tag,
-        userId: member.id,
-        code: usedInvite.code,
-        inviter: inviter || 'Unknown',
-        inviterId: usedInvite.inviterId || 'Unknown',
+        user:      member.user.tag,
+        userId:    member.id,
+        code:      isVanity ? guild.vanityURLCode : usedInvite.code,
+        inviter:   isVanity ? 'Server Vanity URL' : (inviter || 'Unknown'),
+        inviterId: isVanity ? null : (usedInvite?.inviterId || 'Unknown'),
+        isVanity,
       });
     }
   },
