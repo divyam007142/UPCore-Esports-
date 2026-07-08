@@ -26,21 +26,24 @@ module.exports = {
       client.invites.set(guild.id, new Map(newInvites.map(inv => [inv.code, inv.uses])));
     } catch (e) { /* no permission */ }
 
-    // Detect vanity URL if no regular invite matched
-    if (!usedInvite && guild.vanityURLCode) {
+    // Detect vanity URL if no regular invite matched.
+    // guild.features is a plain Array<string> in discord.js v14.
+    const hasVanityFeature = Array.isArray(guild.features)
+      ? guild.features.includes('VANITY_URL')
+      : !!guild.vanityURLCode;
+    if (!usedInvite && hasVanityFeature) {
       try {
-        const vanityKey = `_vanity_${guild.id}`;
+        const vanityKey  = `_vanity_${guild.id}`;
         const vanityData = await guild.fetchVanityData();
         const cachedUses = client.invites.get(vanityKey) ?? null;
-        // On first run cachedUses is null — still flag as vanity since no regular invite matched
+        // First run (null) or use count incremented → vanity join
         if (cachedUses === null || vanityData.uses > cachedUses) isVanity = true;
         client.invites.set(vanityKey, vanityData.uses);
-      } catch { /* no MANAGE_GUILD permission or no vanity */ }
-    }
-
-    // Fallback: if still no match and guild has a vanity URL, assume vanity
-    if (!usedInvite && !isVanity && guild.vanityURLCode) {
-      isVanity = true;
+      } catch {
+        // fetchVanityData needs MANAGE_GUILD. Only assume vanity if we can
+        // confirm a vanity code exists on the guild (cached from gateway data).
+        if (guild.vanityURLCode) isVanity = true;
+      }
     }
 
     const accountAge = getAccountAge(member.user.createdAt);
