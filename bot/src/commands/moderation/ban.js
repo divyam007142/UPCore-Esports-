@@ -44,25 +44,14 @@ module.exports = {
     // Can't ban yourself
     if (targetUser.id === interaction.user.id) {
       return interaction.reply({
-        embeds: [new EmbedBuilder()
-          .setColor(colors.error)
-          .setTitle(`${emojis.error}  Cannot Ban Yourself`)
-          .setDescription('You cannot ban yourself from the server.')
-          .setFooter(makeFooter(client))
-          .setTimestamp()],
+        embeds: [new EmbedBuilder().setColor(colors.error).setDescription(`${emojis.error}  You cannot ban yourself.`).setFooter(makeFooter(client))],
         ephemeral: true,
       });
     }
 
-    // Can't ban the bot itself
     if (targetUser.id === client.user.id) {
       return interaction.reply({
-        embeds: [new EmbedBuilder()
-          .setColor(colors.error)
-          .setTitle(`${emojis.error}  Cannot Ban Bot`)
-          .setDescription('I cannot ban myself.')
-          .setFooter(makeFooter(client))
-          .setTimestamp()],
+        embeds: [new EmbedBuilder().setColor(colors.error).setDescription(`${emojis.error}  I cannot ban myself.`).setFooter(makeFooter(client))],
         ephemeral: true,
       });
     }
@@ -81,11 +70,8 @@ module.exports = {
       return interaction.reply({
         embeds: [new EmbedBuilder()
           .setColor(colors.warning)
-          .setTitle(`${emojis.warning}  Already Banned`)
-          .setDescription(`**${targetUser.tag}** is already banned from this server.`)
-          .addFields({ name: `${emojis.info} User ID`, value: `\`${targetUser.id}\``, inline: true })
-          .setFooter(makeFooter(client))
-          .setTimestamp()],
+          .setDescription(`${emojis.warning}  **${targetUser.tag}** is already banned from this server.`)
+          .setFooter(makeFooter(client))],
         ephemeral: true,
       });
     } catch { }
@@ -134,18 +120,12 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(colors.error)
-      .setTitle(`${emojis.ban}  Member Banned`)
-      .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
-      .addFields(
-        { name: `${emojis.member} User`,          value: `<@${targetUser.id}>\n\`${targetUser.tag}\`\n\`${targetUser.id}\``, inline: true },
-        { name: `${emojis.mod} Moderator`,        value: `<@${interaction.user.id}>`, inline: true },
-        { name: `${emojis.clock} Duration`,       value: `\`${durationLabel}\``, inline: true },
-        { name: `${emojis.log} Reason`,           value: reason, inline: false },
-        { name: `${emojis.purge} Msgs Deleted`,   value: `\`${deleteMessageDays}\` day(s)`, inline: true },
-        { name: `${emojis.case} Case ID`,         value: `\`#${String(newCase.caseId).padStart(4,'0')}\``, inline: true },
-        { name: `${emojis.calendar} Time (IST)`,  value: formatIST(), inline: true },
+      .setDescription(
+        `${emojis.ban} <@${targetUser.id}> has been **banned**` +
+        (durationVal > 0 ? ` · Duration: ${durationLabel}` : '') +
+        (reason !== 'No reason provided' ? ` · Reason: ${reason}` : '')
       )
-      .setFooter(makeFooter(client, `Case #${String(newCase.caseId).padStart(4,'0')}`))
+      .setFooter(makeFooter(client, `by ${interaction.user.username}  ·  Case #${String(newCase.caseId).padStart(4, '0')}`))
       .setTimestamp();
 
     await interaction.reply({ embeds: [embed] });
