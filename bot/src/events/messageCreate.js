@@ -1,8 +1,8 @@
-const { Events, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { Events, EmbedBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder } = require('discord.js');
 const { automodCheck } = require('../services/automodService');
 const { checkTriggers } = require('../services/triggerService');
 const { colors, emojis } = require('../config/config');
-const { e } = require('../utils/emoji');
+const { e, emojiPartial } = require('../utils/emoji');
 const { formatDuration } = require('../utils/time');
 const { makeFooter } = require('../utils/embeds');
 const path = require('path');
@@ -109,6 +109,66 @@ module.exports = {
         } catch { }
         return;
       }
+    }
+
+    // ── "UPC" — Spotify now-playing check ────────────────────────────────────
+    if (/^upc$/i.test(message.content.trim())) {
+      const member  = message.member;
+      const spotify = member?.presence?.activities?.find(a => a.name === 'Spotify');
+
+      if (!spotify) {
+        // No song playing — react with exclamation emoji only
+        const exEmoji = e('exclaim');
+        await message.react(exEmoji || '❗').catch(() => {});
+        return;
+      }
+
+      // Song is playing — react with music emoji
+      const musicEmoji = e('music');
+      await message.react(musicEmoji || '🎵').catch(() => {});
+
+      const songName = spotify.details || 'Unknown Song';
+      const artist   = (spotify.state || 'Unknown Artist').replace(/;/g, ',');
+      const trackId  = spotify.syncId;
+      const trackUrl = trackId ? `https://open.spotify.com/track/${trackId}` : null;
+
+      // Album art — largeImage format: "spotify:<albumImageId>"
+      const rawImg   = spotify.assets?.largeImage;
+      const albumId  = rawImg?.startsWith('spotify:') ? rawImg.slice(8) : null;
+      const albumArt = albumId ? `https://i.scdn.co/image/${albumId}` : null;
+
+      // Spotify emoji for embed author & button (from application emojis)
+      const spotifyEmoji   = e('spotify');                // full string e.g. <:spotify:123>
+      const spotifyPartial = emojiPartial('spotify');     // { id, name } for button
+      const musicStr       = musicEmoji || '🎵';
+
+      // Build embed
+      const embed = new EmbedBuilder()
+        .setColor(0x1DB954)
+        .setAuthor({ name: `${spotifyEmoji ? spotifyEmoji + '  ' : ''}Spotify` })
+        .setDescription(
+          `${musicStr}  <@${message.author.id}> is listening to ` +
+          (trackUrl ? `**[${songName}](${trackUrl})**` : `**${songName}**`) +
+          `  by  **${artist}**`
+        )
+        .setFooter({ text: 'Spotify • Now Playing' })
+        .setTimestamp();
+
+      if (albumArt) embed.setThumbnail(albumArt);
+
+      // "Listen on Spotify" link button
+      const btn = new ButtonBuilder()
+        .setLabel('Listen on Spotify')
+        .setStyle(ButtonStyle.Link)
+        .setURL(trackUrl || 'https://open.spotify.com');
+
+      if (spotifyPartial) btn.setEmoji(spotifyPartial);
+      else                btn.setEmoji({ name: '🎵' });
+
+      const row = new ActionRowBuilder().addComponents(btn);
+
+      await message.reply({ embeds: [embed], components: [row] }).catch(() => {});
+      return;
     }
 
     // ── "UPC afk [reason]" text AFK setter ────────────────────────────────────
