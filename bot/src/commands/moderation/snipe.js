@@ -1,8 +1,29 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { checkAdminRole } = require('../../utils/permissions');
-const { colors, emojis } = require('../../config/config');
-const { formatIST } = require('../../utils/time');
-const { makeFooter } = require('../../utils/embeds');
+const { colors } = require('../../config/config');
+const { e } = require('../../utils/emoji');
+
+function footer(client) {
+  return {
+    text: 'UPCore Esports | #RiseUP',
+    iconURL: client?.user?.displayAvatarURL({ size: 64 }) ?? undefined,
+  };
+}
+
+function emoji(name) {
+  return e(name);
+}
+
+function isImageAttachment(attachment) {
+  const url = typeof attachment === 'string' ? attachment : attachment?.url;
+  const name = typeof attachment === 'string' ? '' : attachment?.name || '';
+  const contentType = typeof attachment === 'string' ? '' : attachment?.contentType || '';
+  return contentType.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:$|[?#])/i.test(`${name} ${url}`);
+}
+
+function attachmentUrl(attachment) {
+  return typeof attachment === 'string' ? attachment : attachment?.url;
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -18,30 +39,44 @@ module.exports = {
       return interaction.reply({
         embeds: [new EmbedBuilder()
           .setColor(colors.neutral)
-          .setTitle(`${emojis.snipe}  Nothing to Snipe`)
+           .setTitle(`${emoji('snipe')}  Nothing to Snipe`)
           .setDescription('There are no recently deleted messages in this channel.\nMessages are cached until the bot restarts.')
-          .setFooter(makeFooter(client))
-          .setTimestamp()],
+           .setFooter(footer(client))
+          ],
         ephemeral: true,
       });
     }
 
     const embed = new EmbedBuilder()
-      .setColor(colors.neutral)
-      .setTitle(`${emojis.snipe}  Sniped Message`)
+      .setColor(0x5865f2)
       .setAuthor({ name: sniped.author, iconURL: sniped.authorAvatar || undefined })
-      .setDescription(sniped.content ? `\`\`\`${sniped.content.slice(0, 900)}\`\`\`` : '*No text content*')
-      .addFields(
-        { name: `${emojis.channel} Channel`,        value: `<#${interaction.channelId}>`, inline: true },
-        { name: `${emojis.member} Author`,          value: sniped.author, inline: true },
-        { name: `${emojis.calendar} Deleted At`,    value: formatIST(sniped.timestamp), inline: true },
-      );
+      .setTitle(`${emoji('snipe')}  Sniped Message`)
+      .setDescription(sniped.content?.trim() ? `> ${sniped.content.slice(0, 3900).replace(/\n/g, '\n> ')}` : '> *No text content*');
 
     if (sniped.attachments?.length > 0) {
-      embed.addFields({ name: `${emojis.screenshot} Attachments`, value: sniped.attachments.slice(0, 3).join('\n'), inline: false });
+      const image = sniped.attachments.find(isImageAttachment);
+      const imageUrl = attachmentUrl(image);
+      if (imageUrl) embed.setImage(imageUrl);
+
+      const otherAttachments = sniped.attachments
+        .filter(attachment => !image || attachmentUrl(attachment) !== imageUrl)
+        .slice(0, 3)
+        .map((attachment, index) => {
+          const url = attachmentUrl(attachment);
+          const name = typeof attachment === 'string' ? `Attachment ${index + 1}` : attachment.name;
+          return `[${name}](${url})`;
+        });
+
+      if (otherAttachments.length > 0) {
+      embed.addFields({
+        name: `${emoji('screenshot')} Attachments`,
+        value: otherAttachments.join(' • '),
+        inline: false,
+      });
+      }
     }
 
-    embed.setFooter(makeFooter(client, 'Message Snipe')).setTimestamp();
+    embed.setFooter(footer(client));
     await interaction.reply({ embeds: [embed] });
   },
 };
