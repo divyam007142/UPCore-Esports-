@@ -14,7 +14,11 @@ module.exports = {
       authorId:     message.author?.id || null,
       authorAvatar: message.author?.displayAvatarURL({ dynamic: true }) || null,
       timestamp:    new Date(),
-      attachments:  message.attachments.map(a => a.url),
+      attachments:  message.attachments.map(a => ({
+        url: a.url,
+        name: a.name || 'attachment',
+        contentType: a.contentType || null,
+      })),
     });
 
     setTimeout(() => {
@@ -48,7 +52,11 @@ module.exports = {
       channelId:    message.channelId,
       content:      message.content,
       attachments:  message.attachments.size > 0
-        ? message.attachments.map(a => a.url)
+        ? message.attachments.map(a => ({
+          url: a.url,
+          name: a.name || 'attachment',
+          contentType: a.contentType || null,
+        }))
         : [],
       deletedBy,
       deletedById,
