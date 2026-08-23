@@ -8,6 +8,95 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function isImageUrl(url = '') {
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:$|[?#])/i.test(url);
+}
+
+function isVideoUrl(url = '') {
+  return /\.(mp4|webm|mov|m4v|ogv|ogg)(?:$|[?#])/i.test(url);
+}
+
+function customEmojiUrl(markup) {
+  const match = String(markup ?? '').match(/^<(a?):([^:>]+):(\d+)>$/);
+  if (!match) return null;
+  return {
+    url: `https://cdn.discordapp.com/emojis/${match[3]}.${match[1] ? 'gif' : 'png'}?size=64&quality=lossless`,
+    name: match[2],
+  };
+}
+
+async function downloadMediaAsDataUri(url) {
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(15000),
+      headers: { 'User-Agent': 'UPCORE-Esports-Transcript/1.0' },
+    });
+    if (!response.ok) return null;
+
+    const contentType = (response.headers.get('content-type') || '').split(';')[0].toLowerCase();
+    const isImage = contentType.startsWith('image/') || isImageUrl(url);
+    const isVideo = contentType.startsWith('video/') || isVideoUrl(url);
+    if (!isImage && !isVideo) return null;
+
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > 16 * 1024 * 1024) return null;
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > 16 * 1024 * 1024) return null;
+
+    const mime = contentType.startsWith('image/')
+      ? contentType
+      : contentType.startsWith('video/')
+        ? contentType
+        : `${isVideo ? 'video' : 'image'}/${(url.match(/\.([a-z0-9]+)(?:$|[?#])/i)?.[1] || 'png').toLowerCase()}`;
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  } catch {
+    // A transcript should still generate when an old Discord CDN asset has expired.
+    return null;
+  }
+}
+
+async function preloadImages(messages, formData) {
+  const urls = new Set();
+  for (const msg of messages) {
+    for (const [, animated, name, id] of String([
+      msg.content,
+      ...msg.embeds.map(embed => embed.description ?? ''),
+      ...msg.embeds.flatMap(embed => [
+        embed.title ?? '',
+        embed.author?.name ?? '',
+        ...(embed.fields ?? []).map(field => field.value ?? ''),
+        ...(embed.fields ?? []).map(field => field.name ?? ''),
+        embed.footer?.text ?? '',
+      ]),
+    ].join('\n')).matchAll(/<(a?):([^:>]+):(\d+)>/g)) {
+      const emoji = customEmojiUrl(`<${animated}:${name}:${id}>`);
+      if (emoji) urls.add(emoji.url);
+    }
+    for (const att of msg.attachments.values()) {
+      if (att.contentType?.startsWith('image/') || isImageUrl(att.url) || isImageUrl(att.name)) {
+        urls.add(att.url);
+      }
+      if (att.contentType?.startsWith('video/') || isVideoUrl(att.url) || isVideoUrl(att.name)) {
+        urls.add(att.url);
+      }
+    }
+    for (const embed of msg.embeds) {
+      if (embed.image?.url) urls.add(embed.image.url);
+      if (embed.thumbnail?.url) urls.add(embed.thumbnail.url);
+    }
+  }
+  for (const value of Object.values(formData ?? {})) {
+    const match = String(value ?? '').match(/^https?:\/\/\S+$/i);
+    if (match) urls.add(match[0]);
+  }
+
+  const entries = await Promise.all([...urls].map(async (url) => [url, await downloadMediaAsDataUri(url)]));
+  return new Map(entries.filter(([, dataUri]) => dataUri));
+}
+
 function formatTs(date) {
   return new Date(date).toLocaleString('en-IN', {
     timeZone: 'Asia/Kolkata', hour12: true,
@@ -46,29 +135,72 @@ async function buildMemberMap(guild, userIds) {
   return map;
 }
 
-function renderEmbed(embed) {
+async function buildRoleMap(guild, roleIds) {
+  const map = new Map();
+  await Promise.all([...roleIds].map(async (id) => {
+    try {
+      const role = await guild.roles.fetch(id);
+      if (role) map.set(id, { name: role.name, color: role.hexColor === '#000000' ? '#99aab5' : role.hexColor });
+    } catch {
+      // Keep the raw role ID as a fallback when the role is no longer available.
+    }
+  }));
+  return map;
+}
+
+function resolveMentions(text, memberMap, roleMap) {
+  return String(text ?? '')
+    .replace(/<@!?(\d+)>/g, (_, id) => {
+      const member = memberMap.get(id);
+      return `@${member?.displayName || member?.tag || `User ${id}`}`;
+    })
+    .replace(/<@&(\d+)>/g, (_, id) => `@${roleMap.get(id)?.name || `Role ${id}`}`)
+    .replace(/@everyone/g, '@everyone')
+    .replace(/@here/g, '@here');
+}
+
+function renderRichText(text, assetMap, memberMap, roleMap) {
+  const resolved = resolveMentions(text, memberMap, roleMap);
+  return resolved.split(/(<a?:[^:>]+:\d+>)/g).map((part) => {
+    const emoji = customEmojiUrl(part);
+    if (!emoji) return escapeHtml(part);
+    const image = assetMap.get(emoji.url);
+    return image
+      ? `<img class="emoji" src="${escapeHtml(image)}" alt=":${escapeHtml(emoji.name)}:" title=":${escapeHtml(emoji.name)}:">`
+      : escapeHtml(`:${emoji.name}:`);
+  }).join('');
+}
+
+function renderEmbed(embed, assetMap, memberMap, roleMap) {
   const bc = embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#5865F2';
   let html = `<div class="embed" style="border-color:${bc}">`;
-  if (embed.author?.name) html += `<div class="embed-author">${escapeHtml(embed.author.name)}</div>`;
-  if (embed.title)        html += `<div class="embed-title">${escapeHtml(embed.title)}</div>`;
-  if (embed.description)  html += `<div class="embed-desc">${escapeHtml(embed.description).replace(/\n/g, '<br>')}</div>`;
+  if (embed.author?.name) html += `<div class="embed-author">${renderRichText(embed.author.name, assetMap, memberMap, roleMap)}</div>`;
+  if (embed.title)        html += `<div class="embed-title">${renderRichText(embed.title, assetMap, memberMap, roleMap)}</div>`;
+  if (embed.description)  html += `<div class="embed-desc">${renderRichText(embed.description, assetMap, memberMap, roleMap).replace(/\n/g, '<br>')}</div>`;
   if (embed.fields?.length) {
     html += `<div class="embed-fields">`;
     for (const f of embed.fields) {
       html += `<div class="embed-field${f.inline ? ' inline' : ''}">` +
-        `<div class="embed-fname">${escapeHtml(f.name)}</div>` +
-        `<div class="embed-fval">${escapeHtml(f.value).replace(/\n/g, '<br>')}</div>` +
+        `<div class="embed-fname">${renderRichText(f.name, assetMap, memberMap, roleMap)}</div>` +
+        `<div class="embed-fval">${renderRichText(f.value, assetMap, memberMap, roleMap).replace(/\n/g, '<br>')}</div>` +
         `</div>`;
     }
     html += `</div>`;
   }
-  if (embed.image?.url) html += `<div class="embed-img"><img src="${embed.image.url}" alt="embed image"></div>`;
-  if (embed.footer?.text) html += `<div class="embed-footer">${escapeHtml(embed.footer.text)}</div>`;
+  if (embed.image?.url) {
+    const image = assetMap.get(embed.image.url) || embed.image.url;
+    html += `<div class="embed-img"><img src="${escapeHtml(image)}" alt="embed image"></div>`;
+  }
+  if (embed.thumbnail?.url) {
+    const thumbnail = assetMap.get(embed.thumbnail.url) || embed.thumbnail.url;
+    html += `<div class="embed-thumb"><img src="${escapeHtml(thumbnail)}" alt="embed thumbnail"></div>`;
+  }
+  if (embed.footer?.text) html += `<div class="embed-footer">${renderRichText(embed.footer.text, assetMap, memberMap, roleMap)}</div>`;
   html += `</div>`;
   return html;
 }
 
-function renderMessage(msg, memberMap) {
+function renderMessage(msg, memberMap, roleMap, assetMap) {
   const info      = memberMap.get(msg.author.id) ?? {};
   const dname     = info.displayName || msg.author.globalName || msg.author.username || 'Unknown';
   const tag       = info.tag || msg.author.tag;
@@ -83,13 +215,21 @@ function renderMessage(msg, memberMap) {
     : (isBot ? `<span class="bot-badge">APP</span>` : '');
 
   let body = '';
-  if (msg.content) body += `<div class="msg-text">${escapeHtml(msg.content).replace(/\n/g, '<br>')}</div>`;
-  for (const embed of msg.embeds)          body += renderEmbed(embed);
+  if (msg.content) body += `<div class="msg-text">${renderRichText(msg.content, assetMap, memberMap, roleMap).replace(/\n/g, '<br>')}</div>`;
+  for (const embed of msg.embeds)          body += renderEmbed(embed, assetMap, memberMap, roleMap);
   for (const att of msg.attachments.values()) {
-    if (/\.(png|jpe?g|gif|webp|svg)$/i.test(att.name ?? ''))
-      body += `<div class="attachment"><img src="${att.url}" alt="${escapeHtml(att.name ?? '')}"></div>`;
+    if (att.contentType?.startsWith('image/') || isImageUrl(att.url) || isImageUrl(att.name)) {
+      const image = assetMap.get(att.url) || att.url;
+      body += `<div class="attachment"><img src="${escapeHtml(image)}" alt="${escapeHtml(att.name ?? '')}"></div>`;
+    }
+    else if (att.contentType?.startsWith('video/') || isVideoUrl(att.url) || isVideoUrl(att.name)) {
+      const video = assetMap.get(att.url);
+      body += video
+        ? `<div class="attachment video-att"><video controls playsinline preload="metadata"><source src="${escapeHtml(video)}" type="${escapeHtml(att.contentType || 'video/mp4')}"><a href="${escapeHtml(att.url)}" target="_blank" rel="noopener">Open video</a></video></div>`
+        : `<div class="attachment file-att"><span class="file-icon">🎬</span><a href="${escapeHtml(att.url)}" target="_blank" rel="noopener">${escapeHtml(att.name ?? 'video')}</a></div>`;
+    }
     else
-      body += `<div class="attachment file-att"><span class="file-icon">📄</span><a href="${att.url}" target="_blank">${escapeHtml(att.name ?? 'file')}</a></div>`;
+      body += `<div class="attachment file-att"><span class="file-icon">📄</span><a href="${escapeHtml(att.url)}" target="_blank" rel="noopener">${escapeHtml(att.name ?? 'file')}</a></div>`;
   }
   if (!body) return '';
 
@@ -107,16 +247,22 @@ function renderMessage(msg, memberMap) {
   </div>`;
 }
 
-function renderFormData(formData) {
+function renderFormData(formData, assetMap = new Map()) {
   if (!formData || !Object.keys(formData).length) return '';
   let rows = '';
   for (const [k, v] of Object.entries(formData)) {
     if (v == null || v === '') continue;
     const str      = String(v);
     const isUrl    = /^https?:\/\/.+/i.test(str.trim());
-    const rendered = isUrl
-      ? `<a href="${escapeHtml(str.trim())}" target="_blank" style="color:#00aff4">View Attachment ↗</a>`
-      : escapeHtml(str).replace(/\n/g, '<br>');
+    const image    = isUrl ? assetMap.get(str.trim()) : null;
+    const video    = isUrl && isVideoUrl(str.trim()) ? image : null;
+    const rendered = video
+      ? `<video class="form-video" controls playsinline preload="metadata"><source src="${escapeHtml(video)}" type="video/${escapeHtml(str.trim().match(/\.([a-z0-9]+)(?:$|[?#])/i)?.[1] || 'mp4')}"><a href="${escapeHtml(str.trim())}" target="_blank" rel="noopener">Open video</a></video>`
+      : image
+        ? `<a href="${escapeHtml(str.trim())}" target="_blank" rel="noopener"><img class="form-image" src="${escapeHtml(image)}" alt="${escapeHtml(k)}"></a>`
+      : isUrl
+        ? `<a href="${escapeHtml(str.trim())}" target="_blank" rel="noopener" style="color:#00aff4">View Attachment ↗</a>`
+        : escapeHtml(str).replace(/\n/g, '<br>');
     rows += `<div class="form-row"><div class="form-key">${escapeHtml(k)}</div><div class="form-val">${rendered}</div></div>`;
   }
   if (!rows) return '';
@@ -136,7 +282,17 @@ async function generateTranscript(channel, ticket) {
   const sorted    = [...messages.values()].reverse();
   const catLabel  = CATEGORY_LABELS[ticket.category] ?? ticket.category;
   const userIds   = new Set(sorted.map(m => m.author.id));
+  const roleIds   = new Set();
+  const mentionText = sorted.map(m => [
+    m.content,
+    ...m.embeds.map(embed => embed.description ?? ''),
+    ...m.embeds.flatMap(embed => (embed.fields ?? []).map(field => field.value ?? '')),
+  ].join('\n')).join('\n');
+  for (const [, id] of mentionText.matchAll(/<@!?(\d+)>/g)) userIds.add(id);
+  for (const [, id] of mentionText.matchAll(/<@&(\d+)>/g)) roleIds.add(id);
   const memberMap = channel.guild ? await buildMemberMap(channel.guild, userIds) : new Map();
+  const roleMap   = channel.guild ? await buildRoleMap(channel.guild, roleIds) : new Map();
+  const assetMap  = await preloadImages(sorted, ticket.formData);
   const generatedAt = formatTs(Date.now());
 
   const html = `<!DOCTYPE html>
@@ -165,6 +321,8 @@ async function generateTranscript(channel, ticket) {
   .form-row:last-child{border-bottom:none}
   .form-key{width:180px;flex-shrink:0;font-size:12px;font-weight:700;color:#99aab5;text-transform:uppercase;letter-spacing:.4px}
   .form-val{flex:1;color:#e0e0e0;word-break:break-word}
+  .form-image{display:block;max-width:300px;max-height:220px;border-radius:6px;border:1px solid #2d3039}
+  .emoji{width:1.35em;height:1.35em;vertical-align:-.32em;object-fit:contain;margin:0 .08em}
   .msgs-header{font-size:11px;font-weight:700;color:#72767d;text-transform:uppercase;letter-spacing:1px;padding:18px 36px 8px}
   .messages{padding:4px 0 24px}
   .message{display:flex;align-items:flex-start;gap:14px;padding:6px 20px;margin:2px 16px;border-radius:6px}
@@ -187,11 +345,45 @@ async function generateTranscript(channel, ticket) {
   .embed-fname{font-size:11px;font-weight:700;color:#e0e0e0;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px}
   .embed-fval{font-size:13px;color:#b9bbbe}
   .embed-img img{max-width:100%;max-height:280px;border-radius:4px;margin-top:8px;display:block}
+  .embed-thumb img{max-width:160px;max-height:160px;border-radius:4px;margin-top:8px;display:block}
   .embed-footer{font-size:11px;color:#72767d;margin-top:8px;border-top:1px solid #2b2d31;padding-top:6px}
   .attachment img{max-width:400px;max-height:280px;border-radius:6px;margin-top:6px;display:block}
+  .form-video,.video-att video{display:block;width:100%;max-width:520px;max-height:360px;border-radius:6px;background:#090b10}
   .file-att{display:inline-flex;align-items:center;gap:8px;background:#1e2128;border:1px solid #2d3039;padding:8px 14px;border-radius:6px;margin-top:6px}
   .footer{background:#0a0a0a;border-top:1px solid #1e2029;padding:14px 36px;text-align:center;font-size:11px;color:#4f545c}
   .footer strong{color:#72767d}
+  @media (max-width:600px){
+    body{font-size:13px;overflow-x:hidden}
+    .header{padding:22px 16px 18px}
+    .header-brand{font-size:15px;letter-spacing:.2px}
+    .badge{font-size:9px;padding:3px 8px}
+    .ticket-title{font-size:21px;line-height:1.25;overflow-wrap:anywhere}
+    .meta-grid{display:grid;grid-template-columns:1fr;gap:7px;font-size:12px}
+    .form-section{margin:12px 10px 0;padding:14px}
+    .form-row{display:block;padding:10px 0}
+    .form-key{width:auto;margin-bottom:4px;font-size:10px}
+    .form-val{font-size:13px}
+    .form-image{max-width:100%;height:auto}
+    .form-video,.video-att video{max-width:100%;max-height:none}
+    .msgs-header{padding:16px 14px 7px;overflow-wrap:anywhere}
+    .message{gap:9px;padding:8px 9px;margin:2px 6px}
+    .avatar{width:32px;height:32px}
+    .msg-header{gap:5px}
+    .author{font-size:13px;overflow-wrap:anywhere}
+    .role-badge{font-size:9px;max-width:100%;overflow-wrap:anywhere}
+    .ts{font-size:10px}
+    .msg-text{font-size:13px}
+    .embed{max-width:100%;padding:11px 12px;margin:7px 0}
+    .embed-fields{display:block}
+    .embed-field,.embed-field.inline{max-width:none;min-width:0;margin-top:8px}
+    .embed-title{font-size:14px;overflow-wrap:anywhere}
+    .embed-desc,.embed-fval{font-size:12px;overflow-wrap:anywhere}
+    .embed-img img{width:100%;height:auto;max-height:none}
+    .embed-thumb img{max-width:120px;max-height:120px}
+    .attachment img{width:100%;height:auto;max-height:none}
+    .file-att{max-width:100%;overflow-wrap:anywhere}
+    .footer{padding:12px 16px;font-size:10px}
+  }
 </style>
 </head>
 <body>
@@ -209,10 +401,10 @@ async function generateTranscript(channel, ticket) {
     <div class="meta-item"><strong>Messages:</strong> ${sorted.length}</div>
   </div>
 </div>
-${renderFormData(ticket.formData)}
+${renderFormData(ticket.formData, assetMap)}
 <div class="msgs-header"># ${escapeHtml(channel.name ?? ticket.ticketId)}</div>
 <div class="messages">
-${sorted.map(m => renderMessage(m, memberMap)).filter(Boolean).join('\n')}
+${sorted.map(m => renderMessage(m, memberMap, roleMap, assetMap)).filter(Boolean).join('\n')}
 </div>
 <div class="footer">UPCORE Esports  •  Ticket System  •  Generated <strong>${generatedAt} IST</strong></div>
 </body>
