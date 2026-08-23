@@ -6,20 +6,59 @@ const { e } = require('../utils/emoji');
 const { formatIST } = require('../utils/time');
 const { makeFooter } = require('../utils/embeds');
 
+function isImageAttachment(attachment) {
+  const url = typeof attachment === 'string' ? attachment : attachment?.url;
+  const name = typeof attachment === 'string' ? '' : attachment?.name || '';
+  const type = typeof attachment === 'string' ? '' : attachment?.contentType || '';
+  return type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:$|[?#])/i.test(`${name} ${url}`);
+}
+
+function attachmentUrl(attachment) {
+  return typeof attachment === 'string' ? attachment : attachment?.url;
+}
+
+async function fetchLogMedia(attachment, index) {
+  const url = attachmentUrl(attachment);
+  if (!url || !isImageAttachment(attachment)) return null;
+
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(15000),
+      headers: { 'User-Agent': 'UPCORE-Esports-Log/1.0' },
+    });
+    if (!response.ok) return null;
+
+    const contentType = (response.headers.get('content-type') || '').split(';')[0].toLowerCase();
+    if (!contentType.startsWith('image/')) return null;
+
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > 8 * 1024 * 1024) return null;
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > 8 * 1024 * 1024) return null;
+
+    const originalName = typeof attachment === 'string' ? '' : attachment.name || '';
+    const extension = contentType.split('/')[1] || originalName.split('.').pop() || 'png';
+    const safeName = originalName.replace(/[^a-z0-9._-]/gi, '_') || `deleted-media-${index + 1}.${extension}`;
+    return { buffer, name: `${index + 1}-${safeName}` };
+  } catch {
+    return null;
+  }
+}
+
 async function getConfig(guildId) {
   let config = await GuildConfig.findOne({ guildId });
   if (!config) config = await GuildConfig.create({ guildId });
   return config;
 }
 
-async function sendLog(client, guildId, logType, embed) {
+async function sendLog(client, guildId, logType, embed, files = []) {
   try {
     const config    = await getConfig(guildId);
     const channelId = config.logging[logType] || process.env.LOGS_CHANNEL_ID;
     if (!channelId) return;
     const channel = client.channels.cache.get(channelId);
     if (!channel) return;
-    await channel.send({ embeds: [embed] });
+    await channel.send({ embeds: [embed], ...(files.length ? { files } : {}) });
   } catch { }
 }
 
@@ -72,6 +111,12 @@ async function logModAction(client, guild, data) {
 
 // ─── Message Delete Log ────────────────────────────────────────────────────────
 async function logMessageDelete(client, guild, data) {
+  const imageAttachments = (data.attachments || []).filter(isImageAttachment);
+  const mediaResults = await Promise.all(
+    imageAttachments.slice(0, 3).map((attachment, index) => fetchLogMedia(attachment, index)),
+  );
+  const media = mediaResults.filter(Boolean);
+
   const embed = new EmbedBuilder()
     .setColor(colors.error)
     .setTitle(`${e('purge')} Message Deleted`)
@@ -101,15 +146,24 @@ async function logMessageDelete(client, guild, data) {
   });
 
   if (data.attachments?.length) {
+    const imageUrl = attachmentUrl(imageAttachments[0]);
+    if (media[0]) embed.setImage(`attachment://${media[0].name}`);
+
+    const attachmentLines = data.attachments.slice(0, 5).map((attachment, index) => {
+      const url = attachmentUrl(attachment);
+      const name = typeof attachment === 'string' ? `Attachment ${index + 1}` : attachment.name || `Attachment ${index + 1}`;
+      return `[${name}](${url})`;
+    });
+
     embed.addFields({
       name:  `${e('screenshot')} Attachments (${data.attachments.length})`,
-      value: data.attachments.slice(0, 5).join('\n').slice(0, 1024),
+      value: attachmentLines.join('\n').slice(0, 1024),
       inline: false,
     });
   }
 
   embed.setFooter(makeFooter(client, 'Message Log')).setTimestamp();
-  await sendLog(client, guild.id, 'messageLogs', embed);
+  await sendLog(client, guild.id, 'messageLogs', embed, media.map(({ buffer, name }) => ({ attachment: buffer, name })));
 }
 
 // ─── Message Edit Log ──────────────────────────────────────────────────────────
