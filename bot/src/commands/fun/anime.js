@@ -10,6 +10,7 @@ const {
 const { e } = require('../../utils/emoji');
 const { makeFooter } = require('../../utils/embeds');
 const { colors } = require('../../config/config');
+const AnimeSave = require('../../models/AnimeSave');
 
 // Node < 18 doesn't have global fetch — fall back safely
 const fetchFn = globalThis.fetch ?? require('node-fetch');
@@ -22,15 +23,13 @@ const CAPTIONS = {
   waifu: 'Here is your cute anime girl',
 };
 
-// Primary + fallback sources per type
+// Public fallback sources per type
 const SOURCES = {
   neko: [
-    () => fetchImage('https://api.waifu.pics/sfw/neko', 'url'),
-    () => fetchImage('https://nekos.best/api/v2/neko', 'results.0.url'),
+    () => fetchImage('https://nekos.life/api/v2/img/neko', 'url'),
   ],
   waifu: [
-    () => fetchImage('https://api.waifu.pics/sfw/waifu', 'url'),
-    () => fetchImage('https://nekos.best/api/v2/waifu', 'results.0.url'),
+    () => fetchImage('https://nekos.life/api/v2/img/waifu', 'url'),
   ],
 };
 
@@ -103,7 +102,7 @@ module.exports = {
           { name: '👧 Waifu', value: 'waifu' },
         ),
     ),
-  cooldown: 3000,
+  cooldown: 10000,
   category: 'fun',
   async execute(interaction, client) {
     // Staff-only guard (support role OR admin role)
@@ -189,7 +188,54 @@ module.exports = {
           .setFooter(makeFooter(client, 'Saved from your server'))
           .setTimestamp();
 
-        await btnInteraction.user.send({ embeds: [dmEmbed] });
+        const existingSave = await AnimeSave.findOne({
+          userId: btnInteraction.user.id,
+          imageUrl,
+        });
+        if (existingSave) {
+          return btnInteraction.reply({
+            embeds: [new EmbedBuilder().setDescription(
+              `${e('info') || 'ℹ️'} This anime image is already sent in your DMs.`,
+            )],
+            flags: MessageFlags.Ephemeral,
+          });
+        }
+
+        let savedImage;
+        try {
+          savedImage = await AnimeSave.create({
+            userId: btnInteraction.user.id,
+            imageUrl,
+            type,
+          });
+        } catch (createError) {
+          if (createError.code === 11000) {
+            return btnInteraction.reply({
+              embeds: [new EmbedBuilder().setDescription(
+                `${e('info') || 'ℹ️'} This anime image is already sent in your DMs.`,
+              )],
+              flags: MessageFlags.Ephemeral,
+            });
+          }
+          throw createError;
+        }
+
+        const removeButton = new ButtonBuilder()
+          .setCustomId(`anime_remove_${savedImage._id}`)
+          .setLabel('Remove')
+          .setStyle(ButtonStyle.Danger);
+
+        try {
+          const dmMessage = await btnInteraction.user.send({
+            embeds: [dmEmbed],
+            components: [new ActionRowBuilder().addComponents(removeButton)],
+          });
+          savedImage.dmMessageId = dmMessage.id;
+          await savedImage.save();
+        } catch (dmError) {
+          await AnimeSave.deleteOne({ _id: savedImage._id }).catch(() => {});
+          throw dmError;
+        }
 
         await btnInteraction.reply({
           content: `${e('success') || '✅'} Sent to your DMs!`,
