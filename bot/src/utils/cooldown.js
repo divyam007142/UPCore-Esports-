@@ -2,12 +2,6 @@ const { EmbedBuilder } = require('discord.js');
 const { colors } = require('../config/config');
 const { e } = require('./emoji');
 
-function buildCooldownBar(remaining, total) {
-  const filled = Math.round((1 - remaining / total) * 10);
-  const empty  = 10 - filled;
-  return '▰'.repeat(filled) + '▱'.repeat(empty);
-}
-
 function checkCooldown(client, interaction, commandName, cooldownMs = 3000) {
   const { cooldowns } = client;
 
@@ -21,18 +15,15 @@ function checkCooldown(client, interaction, commandName, cooldownMs = 3000) {
     const expirationTime = timestamps.get(userId) + cooldownMs;
     if (now < expirationTime) {
       const timeLeftMs = expirationTime - now;
-      const timeLeft   = (timeLeftMs / 1000).toFixed(1);
-      const bar        = buildCooldownBar(timeLeftMs, cooldownMs);
+      const timeLeft   = Math.max(1, Math.ceil(timeLeftMs / 1000));
 
       const embed = new EmbedBuilder()
         .setColor(colors.warning)
         .setDescription(
-          `${e('clock')} **Slow down!**\n` +
-          `Please wait **${timeLeft}s** before using \`/${commandName}\` again.\n` +
-          `\`${bar}\``,
+          `${e('clock')} You are on a cooldown. Please try again later in **${timeLeft} seconds**.`,
         );
 
-      interaction.reply({ embeds: [embed], ephemeral: true });
+      interaction.reply({ embeds: [embed], ephemeral: true }).catch(() => {});
       return false;
     }
   }
