@@ -48,6 +48,7 @@ client.sniped      = new Map();
 client.editedSniped = new Map();
 client.afkUsers    = new Map();
 client.invites     = new Map();
+client.suppressedMessageDeleteLogs = new Set();
 
 async function main() {
   printStartupBanner();
