@@ -38,7 +38,7 @@ module.exports = {
       .setColor(colors.success)
       .setTitle(`${emojis.check}  Trigger Removed`)
       .addFields(
-        { name: `${emojis.automod}  Trigger`, value: `\`${trigger}\``, inline: true },
+        { name: `${emojis.trigger}  Trigger`, value: `\`${trigger}\``, inline: true },
       )
       .setFooter(makeFooter(client))
       .setTimestamp();
