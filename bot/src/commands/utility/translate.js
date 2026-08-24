@@ -40,7 +40,7 @@ const LANG_NAME = Object.fromEntries(LANGUAGES.map(l => [l.value, l.name]));
 
 module.exports = {
   category: 'utility',
-  cooldown: 5000,
+  cooldown: 10000,
   data: new SlashCommandBuilder()
     .setName('translate')
     .setDescription('Translate text into another language using LibreTranslate')
