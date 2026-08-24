@@ -5,6 +5,7 @@ const { colors } = require('../config/config');
 const { e } = require('../utils/emoji');
 const { formatIST } = require('../utils/time');
 const { makeFooter } = require('../utils/embeds');
+const { generatePurgeTranscript } = require('../utils/transcript');
 
 function isImageAttachment(attachment) {
   const url = typeof attachment === 'string' ? attachment : attachment?.url;
@@ -13,13 +14,20 @@ function isImageAttachment(attachment) {
   return type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:$|[?#])/i.test(`${name} ${url}`);
 }
 
+function isVideoAttachment(attachment) {
+  const url = typeof attachment === 'string' ? attachment : attachment?.url;
+  const name = typeof attachment === 'string' ? '' : attachment?.name || '';
+  const type = typeof attachment === 'string' ? '' : attachment?.contentType || '';
+  return type.startsWith('video/') || /\.(mp4|webm|mov|m4v|avi|mkv)(?:$|[?#])/i.test(`${name} ${url}`);
+}
+
 function attachmentUrl(attachment) {
   return typeof attachment === 'string' ? attachment : attachment?.url;
 }
 
 async function fetchLogMedia(attachment, index) {
   const url = attachmentUrl(attachment);
-  if (!url || !isImageAttachment(attachment)) return null;
+  if (!url || (!isImageAttachment(attachment) && !isVideoAttachment(attachment))) return null;
 
   try {
     const response = await fetch(url, {
@@ -29,7 +37,9 @@ async function fetchLogMedia(attachment, index) {
     if (!response.ok) return null;
 
     const contentType = (response.headers.get('content-type') || '').split(';')[0].toLowerCase();
-    if (!contentType.startsWith('image/')) return null;
+    const isImage = contentType.startsWith('image/');
+    const isVideo = contentType.startsWith('video/');
+    if (!isImage && !isVideo) return null;
 
     const contentLength = Number(response.headers.get('content-length') || 0);
     if (contentLength > 8 * 1024 * 1024) return null;
@@ -37,7 +47,7 @@ async function fetchLogMedia(attachment, index) {
     if (buffer.length > 8 * 1024 * 1024) return null;
 
     const originalName = typeof attachment === 'string' ? '' : attachment.name || '';
-    const extension = contentType.split('/')[1] || originalName.split('.').pop() || 'png';
+    const extension = contentType.split('/')[1] || originalName.split('.').pop() || (isVideo ? 'mp4' : 'png');
     const safeName = originalName.replace(/[^a-z0-9._-]/gi, '_') || `deleted-media-${index + 1}.${extension}`;
     return { buffer, name: `${index + 1}-${safeName}` };
   } catch {
@@ -58,7 +68,8 @@ async function sendLog(client, guildId, logType, embed, files = []) {
     if (!channelId) return;
     const channel = client.channels.cache.get(channelId);
     if (!channel) return;
-    await channel.send({ embeds: [embed], ...(files.length ? { files } : {}) });
+    const embeds = Array.isArray(embed) ? embed : [embed];
+    await channel.send({ embeds, ...(files.length ? { files } : {}) });
   } catch { }
 }
 
@@ -111,9 +122,11 @@ async function logModAction(client, guild, data) {
 
 // ─── Message Delete Log ────────────────────────────────────────────────────────
 async function logMessageDelete(client, guild, data) {
-  const imageAttachments = (data.attachments || []).filter(isImageAttachment);
+  const mediaAttachments = (data.attachments || []).filter(
+    attachment => isImageAttachment(attachment) || isVideoAttachment(attachment),
+  );
   const mediaResults = await Promise.all(
-    imageAttachments.slice(0, 3).map((attachment, index) => fetchLogMedia(attachment, index)),
+    mediaAttachments.slice(0, 3).map((attachment, index) => fetchLogMedia(attachment, index)),
   );
   const media = mediaResults.filter(Boolean);
 
@@ -146,8 +159,10 @@ async function logMessageDelete(client, guild, data) {
   });
 
   if (data.attachments?.length) {
-    const imageUrl = attachmentUrl(imageAttachments[0]);
-    if (media[0]) embed.setImage(`attachment://${media[0].name}`);
+    const firstMedia = media[0];
+    if (firstMedia && isImageAttachment(mediaAttachments[0])) {
+      embed.setImage(`attachment://${firstMedia.name}`);
+    }
 
     const attachmentLines = data.attachments.slice(0, 5).map((attachment, index) => {
       const url = attachmentUrl(attachment);
@@ -276,24 +291,6 @@ async function logChannel(client, guild, type, data) {
   await sendLog(client, guild.id, 'channelLogs', embed);
 }
 
-// ─── AutoMod Log ──────────────────────────────────────────────────────────────
-async function logAutomod(client, guild, data) {
-  const embed = new EmbedBuilder()
-    .setColor(colors.error)
-    .setTitle(`${e('automod')} AutoMod — Content Blocked`)
-    .addFields(
-      { name: `${e('member')} User`,         value: `<@${data.userId}>\n\`${data.user}\`\n\`${data.userId}\``, inline: true },
-      { name: `${e('channel')} Channel`,     value: `<#${data.channelId}>`,                                    inline: true },
-      { name: `${e('warning')} Trigger`,     value: `\`${data.reason}\``,                                      inline: true },
-      { name: `${e('log')} Blocked Content`, value: `\`\`\`${data.content?.slice(0, 950) || 'N/A'}\`\`\``,    inline: false },
-      { name: `${e('calendar')} Timestamp`,  value: `<t:${Math.floor(Date.now() / 1000)}:F>\n${formatIST()}`,  inline: true },
-    )
-    .setFooter(makeFooter(client, 'AutoMod'))
-    .setTimestamp();
-
-  await sendLog(client, guild.id, 'automodLogs', embed);
-}
-
 // ─── Invite Log ───────────────────────────────────────────────────────────────
 async function logInvite(client, guild, data) {
   const embed = new EmbedBuilder()
@@ -319,7 +316,7 @@ async function logInvite(client, guild, data) {
 async function logPurge(client, guild, data) {
   const embed = new EmbedBuilder()
     .setColor(colors.warning)
-    .setTitle(`${e('purge')} Bulk Message Delete`)
+    .setTitle(`${e('purge')} Purge All`)
     .addFields(
       { name: `${e('mod')} Moderator`,       value: `<@${data.moderatorId}>\n\`${data.moderator}\``, inline: true },
       { name: `${e('channel')} Channel`,     value: `<#${data.channelId}>`,                          inline: true },
@@ -331,8 +328,24 @@ async function logPurge(client, guild, data) {
     embed.addFields({ name: `${e('member')} Filter — User`, value: `\`${data.filterUser}\``, inline: true });
   }
 
+  const messages = Array.isArray(data.messages) ? data.messages : [];
+  const orderedMessages = messages
+    .slice()
+    .sort((a, b) => (a.createdTimestamp || 0) - (b.createdTimestamp || 0));
+
+  embed.addFields({
+    name: `${e('log')} Deleted Messages`,
+    value: orderedMessages.length
+      ? 'The full purge is attached as a mobile-friendly HTML report.'
+      : 'Message content was unavailable before deletion.',
+    inline: false,
+  });
   embed.setFooter(makeFooter(client, 'Purge Log')).setTimestamp();
-  await sendLog(client, guild.id, 'purgeLogs', embed);
+  const report = await generatePurgeTranscript(guild, orderedMessages, data);
+  await sendLog(client, guild.id, 'purgeLogs', embed, [{
+    attachment: report,
+    name: 'purge-all.html',
+  }]);
 }
 
 // ─── Command Usage Log ────────────────────────────────────────────────────────
@@ -383,5 +396,5 @@ async function logCommandUsage(client, interaction, args = {}) {
 module.exports = {
   sendLog, getConfig,
   logModAction, logMessage, logWelcome, logVoice,
-  logChannel, logAutomod, logInvite, logPurge, logCommandUsage,
+  logChannel, logInvite, logPurge, logCommandUsage,
 };
