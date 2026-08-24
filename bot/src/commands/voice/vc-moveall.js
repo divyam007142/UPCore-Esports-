@@ -20,7 +20,7 @@ module.exports = {
         .addChannelTypes(ChannelType.GuildVoice, ChannelType.GuildStageVoice)
         .setRequired(true)
     ),
-  cooldown: 5000,
+  cooldown: 10000,
 
   async execute(interaction, client) {
     await interaction.deferReply();
