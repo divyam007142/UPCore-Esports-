@@ -5,6 +5,7 @@ module.exports = {
   name: Events.MessageDelete,
   async execute(message, client) {
     if (!message.guild) return;
+    if (client.suppressedMessageDeleteLogs?.delete(message.id)) return;
     if (message.author?.bot) return;
 
     // Store for snipe command
