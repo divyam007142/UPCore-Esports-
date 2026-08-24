@@ -9,7 +9,7 @@ module.exports = {
     .setDescription('Make the bot send a message in a channel')
     .addStringOption(o => o.setName('message').setDescription('Message to send').setRequired(true))
     .addChannelOption(o => o.setName('channel').setDescription('Channel to send in (default: current)').setRequired(false)),
-  cooldown: 5000,
+  cooldown: 10000,
 
   async execute(interaction, client) {
     if (!await checkAdminRole(interaction)) return;
