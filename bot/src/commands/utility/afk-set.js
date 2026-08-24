@@ -31,6 +31,7 @@ module.exports = {
       embeds: [new EmbedBuilder()
         .setColor(colors.neutral)
         .setDescription(`${e('afk')}  You are now AFK, See you later <@${interaction.user.id}>`)],
+      ephemeral: true,
     });
   },
 };
