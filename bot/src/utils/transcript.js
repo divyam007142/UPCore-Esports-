@@ -105,6 +105,14 @@ function formatTs(date) {
   });
 }
 
+function formatRelativeTs(date) {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
 const CATEGORY_LABELS = {
   general:    'General Support',
   tournament: 'Tournament Support',
@@ -206,7 +214,7 @@ function renderMessage(msg, memberMap, roleMap, assetMap) {
   const tag       = info.tag || msg.author.tag;
   const isBot     = info.isBot ?? msg.author.bot;
   const topRole   = info.topRole;
-  const ts        = formatTs(msg.createdTimestamp);
+   const ts        = `${formatTs(msg.createdTimestamp)} IST · ${formatRelativeTs(msg.createdTimestamp)}`;
   const avatar    = msg.author.displayAvatarURL({ size: 64, extension: 'png' });
 
   const nameColor = topRole ? topRole.color : (isBot ? '#00D4FF' : '#e0e0e0');
@@ -413,4 +421,78 @@ ${sorted.map(m => renderMessage(m, memberMap, roleMap, assetMap)).filter(Boolean
   return Buffer.from(html, 'utf8');
 }
 
-module.exports = { generateTranscript };
+async function generatePurgeTranscript(guild, messages, data) {
+  const sorted = [...(messages ?? [])].sort((a, b) => (a.createdTimestamp || 0) - (b.createdTimestamp || 0));
+  const userIds = new Set(sorted.map(message => message.author?.id).filter(Boolean));
+  const roleIds = new Set();
+  const mentionText = sorted.map(message => [
+    message.content || '',
+    ...((message.embeds || []).map(embed => [
+      embed.title || '',
+      embed.description || '',
+      ...(embed.fields || []).flatMap(field => [field.name || '', field.value || '']),
+    ].join('\n'))),
+  ].join('\n')).join('\n');
+
+  for (const [, id] of mentionText.matchAll(/<@!?(\d+)>/g)) userIds.add(id);
+  for (const [, id] of mentionText.matchAll(/<@&(\d+)>/g)) roleIds.add(id);
+
+  const memberMap = await buildMemberMap(guild, userIds);
+  const roleMap = await buildRoleMap(guild, roleIds);
+  const assetMap = await preloadImages(sorted, {});
+  const generatedAt = formatTs(Date.now());
+  const channelName = sorted[0]?.channel?.name || data.channelId || 'Unknown channel';
+  const moderator = guild.members.cache.get(data.moderatorId)?.displayName || data.moderator || 'Unknown';
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Purge All — ${escapeHtml(channelName)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#111;color:#dcddde;font-family:'Segoe UI',sans-serif;font-size:14px;line-height:1.5}
+a{color:#00aff4;text-decoration:none}a:hover{text-decoration:underline}
+.header{background:#0a0a0a;border-bottom:3px solid #ed4245;padding:26px 34px 22px}
+.brand{font-size:18px;font-weight:700;color:#fff;margin-bottom:10px}.brand span{color:#ed4245}
+.badge{display:inline-block;background:#ed4245;color:#fff;font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px}
+h1{font-size:25px;color:#fff;margin-bottom:13px}
+.meta{display:flex;flex-wrap:wrap;gap:8px 26px;color:#b9bbbe;font-size:13px}.meta strong{color:#fff}
+.messages{padding:16px 0 26px}.section{padding:0 34px 9px;color:#72767d;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
+.message{display:flex;align-items:flex-start;gap:14px;padding:9px 28px;margin:2px 16px;border-radius:7px}.message:hover{background:#1a1c1e}
+.avatar{width:42px;height:42px;border-radius:50%;flex-shrink:0}.msg-body{flex:1;min-width:0}
+.msg-header{display:flex;align-items:baseline;flex-wrap:wrap;gap:7px;margin-bottom:4px}
+.author{font-weight:700;font-size:14px}.tag{color:#72767d;font-size:11px}.role{font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;border:1px solid}
+.ts{color:#72767d;font-size:11px}.msg-text{color:#dcddde;word-break:break-word;white-space:pre-wrap}
+.emoji{width:1.35em;height:1.35em;vertical-align:-.32em;object-fit:contain;margin:0 .08em}
+.attachment img{display:block;max-width:520px;max-height:360px;border-radius:6px;margin-top:8px}.video{display:block;width:100%;max-width:600px;max-height:420px;margin-top:8px;background:#090b10;border-radius:6px}
+.file{display:inline-flex;gap:7px;margin-top:8px;background:#1e2128;border:1px solid #2d3039;padding:7px 11px;border-radius:6px}
+.footer{border-top:1px solid #25272d;background:#0a0a0a;padding:14px 34px;text-align:center;color:#72767d;font-size:11px}
+@media(max-width:600px){body{font-size:13px}.header{padding:21px 16px 18px}h1{font-size:21px}.meta{display:grid;grid-template-columns:1fr;gap:6px}.section{padding:0 14px 8px}.message{gap:9px;padding:8px 9px;margin:2px 6px}.avatar{width:34px;height:34px}.author{font-size:13px}.ts,.tag{font-size:10px}.attachment img{max-width:100%;height:auto;max-height:none}.video{max-height:none}}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="brand">UPCORE <span>Esports</span> · Moderation Logs</div>
+  <div class="badge">Purge All</div>
+  <h1>${escapeHtml(data.count || sorted.length)} message${(data.count || sorted.length) === 1 ? '' : 's'} deleted from #${escapeHtml(channelName)}</h1>
+  <div class="meta">
+    <div><strong>Moderator:</strong> ${escapeHtml(moderator)} · <code>${escapeHtml(data.moderatorId || '')}</code></div>
+    <div><strong>Channel:</strong> #${escapeHtml(channelName)} · <code>${escapeHtml(data.channelId || '')}</code></div>
+    ${data.filterUser ? `<div><strong>User filter:</strong> ${escapeHtml(data.filterUser)}</div>` : ''}
+    <div><strong>Generated:</strong> ${escapeHtml(generatedAt)} IST</div>
+  </div>
+</header>
+<div class="section">Deleted messages · mentions are resolved to names and roles</div>
+<main class="messages">
+${sorted.map(message => renderMessage(message, memberMap, roleMap, assetMap)).filter(Boolean).join('\n')}
+</main>
+<footer class="footer">UPCORE Esports · Purge All · Generated ${escapeHtml(generatedAt)} IST</footer>
+</body>
+</html>`;
+
+  return Buffer.from(html, 'utf8');
+}
+
+module.exports = { generateTranscript, generatePurgeTranscript };
