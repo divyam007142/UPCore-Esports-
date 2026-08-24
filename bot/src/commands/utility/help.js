@@ -19,7 +19,7 @@ function getCategories() {
     role:        { label: 'Role Management',  description: 'Add/remove roles, bulk role actions',                                  emoji: e('role')    },
     voice:       { label: 'Voice',            description: 'VC mute, deafen, kick, move, move all members',                        emoji: e('voice')   },
     fun:         { label: 'Fun',              description: 'Ship compatibility card, anime images (neko & waifu) and more',        emoji: e('fire')    },
-    tournament:  { label: 'Tournament',       description: 'Prefix commands for tournament staff (screenshot, dodge, spotify…)',   emoji: e('star')    },
+    tournament:  { label: 'Tournament',       description: 'Prefix commands for tournament staff (screenshot, dodge…)',           emoji: e('star')    },
   };
 }
 
@@ -138,17 +138,11 @@ module.exports = {
               value: 'Notify a player they have posted in the wrong channel. Mention the player to ping them.',
               inline: false,
             },
-            {
-              name:  `${e('music') || '🎵'} \`~spotify\``,
-              value: 'Shows how the **UPC Spotify** feature works — requirements: visible status, Spotify connected to Discord, song actively playing. No role needed, anyone can run this.',
-              inline: false,
-            },
           );
           embed.setDescription(
             `${e('info')} ${categoryInfo.description}\n\n` +
-            `${e('log')} **4** command(s) in this category\n\n` +
-            `> Prefix: \`~\`  —  Mention a player after the command to ping them.\n` +
-            `> \`~spotify\` is public — no staff role required.`,
+            `${e('log')} **3** command(s) in this category\n\n` +
+            `> Prefix: \`~\`  —  Mention a player after the command to ping them.`,
           );
         } else if (cmds.size === 0) {
           embed.setDescription(
