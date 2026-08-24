@@ -11,8 +11,8 @@ function successEmbed(text) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('purge')
-    .setDescription('Bulk delete messages in this channel')
+    .setName('purge-all')
+    .setDescription('Purge all selected messages in this channel')
     .addIntegerOption(o => o.setName('amount').setDescription('Number of messages to delete (1–100)').setRequired(true).setMinValue(1).setMaxValue(100))
     .addUserOption(o => o.setName('user').setDescription('Only delete messages from this user').setRequired(false)),
   cooldown: 10000,
@@ -81,7 +81,8 @@ module.exports = {
           await logPurge(client, interaction.guild, {
             moderator: interaction.user.tag, moderatorId: interaction.user.id,
             channelId: interaction.channelId, count: deleted.size,
-            filterUser: filterUser?.tag,
+             filterUser: filterUser?.tag,
+             messages: [...deleted.values()],
           });
 
           await btn.update({
