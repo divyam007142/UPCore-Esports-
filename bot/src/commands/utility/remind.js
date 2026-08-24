@@ -11,7 +11,7 @@ module.exports = {
     .setDescription('Set a reminder for yourself')
     .addStringOption(o => o.setName('time').setDescription('Time — e.g. 10m, 1h, 2d').setRequired(true))
     .addStringOption(o => o.setName('message').setDescription('Reminder message').setRequired(true)),
-  cooldown: 3000,
+  cooldown: 10000,
 
   async execute(interaction, client) {
     const timeStr    = interaction.options.getString('time');
