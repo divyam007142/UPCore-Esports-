@@ -18,7 +18,7 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor(colors.info)
-      .setTitle(`${emojis.automod}  Auto-Response Triggers`)
+      .setTitle(`${emojis.trigger}  Auto-Response Triggers`)
       .setFooter(makeFooter(client))
       .setTimestamp();
 
@@ -28,7 +28,7 @@ module.exports = {
       embed.setDescription(`${emojis.check}  **${triggers.length}** trigger(s) configured:`);
       triggers.slice(0, 20).forEach(t => {
         embed.addFields({
-          name:   `${emojis.automod}  \`${t.trigger}\``,
+          name:   `${emojis.trigger}  \`${t.trigger}\``,
           value:  t.response.slice(0, 100),
           inline: false,
         });
