@@ -50,15 +50,4 @@ module.exports = {
     info:       2000,
     bulk:       10000,
   },
-  automod: {
-    scamLinks: [
-      'discord-nitro', 'free-nitro', 'discordgift', 'steamgift', 'freegift',
-      'bit.ly', 'tinyurl', 'grabify', 'discord.gift.', 'discordapp.com.ru',
-      'discord-app.com', 'discrord', 'discordl', '1800flowers', 'dlscord',
-    ],
-    maxMentions:   5,
-    spamThreshold: 5,
-    spamInterval:  5000,
-    badWords: ['nigger', 'faggot', 'retard', 'chink', 'spic'],
-  },
 };
