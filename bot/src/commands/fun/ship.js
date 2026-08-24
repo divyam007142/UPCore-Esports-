@@ -367,7 +367,7 @@ module.exports = {
     .setDescription('Generate a compatibility card between two members')
     .addUserOption(o => o.setName('user1').setDescription('First member').setRequired(true))
     .addUserOption(o => o.setName('user2').setDescription('Second member (defaults to you)').setRequired(false)),
-  cooldown: 5000,
+  cooldown: 10000,
   category: 'fun',
 
   async execute(interaction, client) {
