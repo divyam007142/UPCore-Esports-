@@ -31,7 +31,7 @@ module.exports = {
         .setColor(colors.success)
         .setTitle(`${emojis.check}  Trigger Created`)
         .addFields(
-          { name: `${emojis.automod}  Trigger`,  value: `\`${trigger}\``,         inline: true },
+          { name: `${emojis.trigger}  Trigger`,  value: `\`${trigger}\``,         inline: true },
           { name: `${emojis.note}  Response`,    value: response.slice(0, 512),   inline: false },
         )
         .setFooter(makeFooter(client))
