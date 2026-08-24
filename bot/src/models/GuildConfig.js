@@ -9,7 +9,6 @@ const guildConfigSchema = new mongoose.Schema({
     voiceLogs: { type: String, default: null },
     inviteLogs: { type: String, default: null },
     purgeLogs: { type: String, default: null },
-    automodLogs: { type: String, default: null },
     ticketLogs: { type: String, default: null },
     commandLogs: { type: String, default: null },
     channelLogs: { type: String, default: null },
@@ -19,14 +18,6 @@ const guildConfigSchema = new mongoose.Schema({
     logChannelId: { type: String, default: null },
     dmEnabled: { type: Boolean, default: true },
     message: { type: String, default: 'Welcome to the server!' },
-  },
-  automod: {
-    enabled: { type: Boolean, default: true },
-    blockScamLinks: { type: Boolean, default: true },
-    blockMassMentions: { type: Boolean, default: true },
-    blockSpam: { type: Boolean, default: true },
-    blockNsfw: { type: Boolean, default: true },
-    maxMentions: { type: Number, default: 5 },
   },
   caseCount: { type: Number, default: 0 },
   ticket: {
