@@ -16,6 +16,8 @@ module.exports = {
     if (!await checkAdminRole(interaction)) return;
 
     const targetUser = interaction.options.getUser('user');
+    await interaction.deferReply({ ephemeral: true });
+
     const noteDoc    = await Note.findOne({ guildId: interaction.guildId, userId: targetUser.id });
 
     const embed = new EmbedBuilder()
@@ -48,6 +50,6 @@ module.exports = {
       }
     }
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
