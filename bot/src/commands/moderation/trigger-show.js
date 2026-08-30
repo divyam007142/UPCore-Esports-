@@ -14,6 +14,8 @@ module.exports = {
     if (!await checkAdminRole(interaction)) return;
 
     const client   = interaction.client;
+    await interaction.deferReply({ ephemeral: true });
+
     const triggers = await Trigger.find({ guildId: interaction.guildId }).sort({ trigger: 1 });
 
     const embed = new EmbedBuilder()
@@ -38,6 +40,6 @@ module.exports = {
       }
     }
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
