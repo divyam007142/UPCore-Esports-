@@ -72,6 +72,10 @@ module.exports = {
       if (btn.customId === 'purge_confirm') {
         collector.stop();
         try {
+          // Acknowledge the confirmation click before deletion and transcript
+          // generation, which may include downloading logged attachments.
+          await btn.deferUpdate();
+
           let messages = await interaction.channel.messages.fetch({ limit: 100 });
           if (filterUser) messages = messages.filter(m => m.author.id === filterUser.id);
           messages = messages.first(amount);
@@ -85,12 +89,12 @@ module.exports = {
              messages: [...deleted.values()],
           });
 
-          await btn.update({
+          await btn.editReply({
             embeds: [successEmbed(`${e('check')} Successfully purged **${deleted.size}** message${deleted.size !== 1 ? 's' : ''}.`)],
             components: [],
           });
         } catch {
-          await btn.update({
+          await btn.editReply({
             embeds: [new EmbedBuilder()
               .setColor(colors.error)
               .setTitle(`${emojis.error}  Purge Failed`)
