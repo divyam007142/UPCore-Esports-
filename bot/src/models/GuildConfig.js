@@ -12,6 +12,7 @@ const guildConfigSchema = new mongoose.Schema({
     ticketLogs: { type: String, default: null },
     commandLogs: { type: String, default: null },
     channelLogs: { type: String, default: null },
+    bothealthLogs: { type: String, default: null },
   },
   welcome: {
     channelId: { type: String, default: null },
