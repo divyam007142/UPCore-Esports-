@@ -16,6 +16,8 @@ module.exports = {
     if (!await checkAdminRole(interaction)) return;
 
     const targetUser  = interaction.options.getUser('user');
+    await interaction.deferReply();
+
     const warningDoc  = await Warning.findOne({ guildId: interaction.guildId, userId: targetUser.id });
     const activeWarns = warningDoc?.warnings.filter(w => w.active) || [];
     const totalWarns  = warningDoc?.warnings.length || 0;
@@ -65,6 +67,6 @@ module.exports = {
       });
     }
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
