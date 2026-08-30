@@ -4,9 +4,14 @@ const { logWelcome } = require('../services/logService');
 const { getAccountAge } = require('../utils/time');
 const { e } = require('../utils/emoji');
 
-module.exports = {
-  name: Events.GuildMemberAdd,
-  async execute(member, client) {
+const WELCOME_DELAY_MS = 3000;
+const welcomeQueues = new Map();
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function processWelcome(member, client) {
     const { guild } = member;
 
     // Detect invite used
@@ -122,5 +127,24 @@ module.exports = {
         isVanity,
       });
     }
+}
+
+module.exports = {
+  name: Events.GuildMemberAdd,
+
+  async execute(member, client) {
+    const guildId = member.guild.id;
+    const previous = welcomeQueues.get(guildId) || Promise.resolve();
+    const queued = previous
+      .catch(() => {})
+      .then(() => wait(WELCOME_DELAY_MS))
+      .then(() => processWelcome(member, client));
+
+    welcomeQueues.set(guildId, queued);
+    queued.finally(() => {
+      if (welcomeQueues.get(guildId) === queued) welcomeQueues.delete(guildId);
+    }).catch(() => {});
+
+    return queued;
   },
 };
