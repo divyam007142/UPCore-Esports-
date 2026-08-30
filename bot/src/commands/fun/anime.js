@@ -33,6 +33,12 @@ const SOURCES = {
   ],
 };
 
+function feedbackEmbed(color, message) {
+  return new EmbedBuilder()
+    .setColor(color)
+    .setDescription(message);
+}
+
 function getPath(obj, path) {
   return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 }
@@ -116,8 +122,7 @@ module.exports = {
       return interaction.reply({
         embeds: [new EmbedBuilder()
           .setColor(colors.error)
-          .setDescription(`${e('error') || '❌'}  **This command is for Staff only.**`)
-          .setFooter(makeFooter(client))],
+          .setDescription(`${e('error') || '❌'}  **This command is for Staff only.**`)],
         flags: MessageFlags.Ephemeral,
       });
     }
@@ -135,8 +140,7 @@ module.exports = {
       return interaction.editReply({
         embeds: [new EmbedBuilder()
           .setColor(colors.error)
-          .setDescription(`${e('error') || '❌'}  Failed to fetch image. Try again in a moment.`)
-          .setFooter(makeFooter(client))],
+          .setDescription(`${e('error') || '❌'}  Failed to fetch image. Try again in a moment.`)],
       });
     }
 
@@ -194,7 +198,8 @@ module.exports = {
         });
         if (existingSave) {
           return btnInteraction.reply({
-            embeds: [new EmbedBuilder().setDescription(
+            embeds: [feedbackEmbed(
+              colors.info,
               `${e('info') || 'ℹ️'} This anime image is already sent in your DMs.`,
             )],
             flags: MessageFlags.Ephemeral,
@@ -211,7 +216,8 @@ module.exports = {
         } catch (createError) {
           if (createError.code === 11000) {
             return btnInteraction.reply({
-              embeds: [new EmbedBuilder().setDescription(
+              embeds: [feedbackEmbed(
+                colors.info,
                 `${e('info') || 'ℹ️'} This anime image is already sent in your DMs.`,
               )],
               flags: MessageFlags.Ephemeral,
@@ -223,6 +229,7 @@ module.exports = {
         const removeButton = new ButtonBuilder()
           .setCustomId(`anime_remove_${savedImage._id}`)
           .setLabel('Remove')
+          .setEmoji(e('purge') || '🗑️')
           .setStyle(ButtonStyle.Danger);
 
         try {
@@ -238,13 +245,19 @@ module.exports = {
         }
 
         await btnInteraction.reply({
-          content: `${e('success') || '✅'} Sent to your DMs!`,
+          embeds: [feedbackEmbed(
+            colors.success,
+            `${e('success') || '✅'} Sent to your DMs!`,
+          )],
           flags: MessageFlags.Ephemeral,
         });
       } catch (err) {
         console.error('[/anime] failed to DM user:', err.message);
         await btnInteraction.reply({
-          content: `${e('error') || '❌'} Couldn't DM you — check your privacy settings allow DMs from server members.`,
+          embeds: [feedbackEmbed(
+            colors.error,
+            `${e('error') || '❌'} Couldn't DM you — check your privacy settings allow DMs from server members.`,
+          )],
           flags: MessageFlags.Ephemeral,
         });
       }
