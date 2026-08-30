@@ -49,6 +49,9 @@ module.exports = {
       });
     }
 
+    // Acknowledge before the warning update, case creation, and logging work.
+    await interaction.deferReply();
+
     warning.active = false;
     await warningDoc.save().catch(err => { throw new Error(`Failed to save warning update: ${err.message}`); });
 
@@ -75,6 +78,6 @@ module.exports = {
       .setFooter(makeFooter(client, `by ${interaction.user.username}`))
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
