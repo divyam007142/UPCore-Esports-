@@ -76,6 +76,10 @@ module.exports = {
       });
     } catch { }
 
+    // Acknowledge before DM, ban, database, and logging work so Discord does
+    // not expire the interaction while the moderation action is completing.
+    await interaction.deferReply();
+
     // DM the user before ban
     try {
       const dmEmbed = new EmbedBuilder()
@@ -128,6 +132,6 @@ module.exports = {
       .setFooter(makeFooter(client, `by ${interaction.user.username}  ·  Case #${String(newCase.caseId).padStart(4, '0')}`))
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
