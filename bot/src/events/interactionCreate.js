@@ -16,6 +16,7 @@ module.exports = {
       const cooldownMs = command.cooldown || 3000;
       if (!checkCooldown(client, interaction, interaction.commandName, cooldownMs)) return;
 
+      const startedAt = Date.now();
       try {
         logCommand(interaction.user.tag, interaction.commandName, interaction.guild?.name || 'DM');
 
@@ -27,8 +28,16 @@ module.exports = {
         }
 
         await command.execute(interaction, client);
-        await logCommandUsage(client, interaction, args);
+        await logCommandUsage(client, interaction, args, {
+          status: 'SUCCESS',
+          durationMs: Date.now() - startedAt,
+        });
       } catch (error) {
+        await logCommandUsage(client, interaction, args, {
+          status: 'FAILED',
+          durationMs: Date.now() - startedAt,
+          error,
+        });
         await handleCommandError(interaction, error);
       }
       return;
