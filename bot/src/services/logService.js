@@ -61,10 +61,10 @@ async function getConfig(guildId) {
   return config;
 }
 
-async function sendLog(client, guildId, logType, embed, files = []) {
+async function sendLog(client, guildId, logType, embed, files = [], { fallback = true } = {}) {
   try {
     const config    = await getConfig(guildId);
-    const channelId = config.logging[logType] || process.env.LOGS_CHANNEL_ID;
+    const channelId = config.logging[logType] || (fallback ? process.env.LOGS_CHANNEL_ID : null);
     if (!channelId) return;
     const channel = client.channels.cache.get(channelId);
     if (!channel) return;
@@ -99,11 +99,13 @@ async function logModAction(client, guild, data) {
 
   const embed = new EmbedBuilder()
     .setColor(meta.color)
-    .setTitle(`${meta.emoji} ${meta.label} — Case #${data.caseId}`)
+    .setTitle(`${meta.emoji} ${meta.label} — Action Completed`)
     .setAuthor({ name: data.target, iconURL: data.targetAvatar || undefined })
     .addFields(
       { name: `${e('member')} Target`,    value: `<@${data.targetId}>\n\`${data.target}\`\n\`${data.targetId}\``,       inline: true },
       { name: `${e('mod')} Moderator`,   value: `<@${data.moderatorId}>\n\`${data.moderator}\``,                        inline: true },
+      { name: `${e('server')} Server`,   value: `${guild.name}\n\`${guild.id}\``,                                       inline: true },
+      { name: `${e('info')} Action`,     value: `\`${data.action}\`\n${meta.label}`,                                   inline: true },
       { name: `${e('log')} Reason`,      value: data.reason || 'No reason provided',                                     inline: false },
     );
 
@@ -239,16 +241,52 @@ async function logWelcome(client, guild, member, data) {
 }
 
 // ─── Voice Log ────────────────────────────────────────────────────────────────
+function formatDuration(ms) {
+  if (!Number.isFinite(ms)) return 'Not available';
+
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts = [];
+
+  if (hours) parts.push(`${hours}h`);
+  if (minutes || hours) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+  return parts.join(' ');
+}
+
 async function logVoice(client, guild, data) {
   const COLOR_MAP = {
-    'Joined':     colors.success,
-    'Left':       colors.error,
-    'Moved':      colors.info,
-    'Muted':      colors.moderation,
-    'Unmuted':    colors.success,
-    'Deafened':   colors.moderation,
-    'Undeafened': colors.success,
+    'Joined':             colors.success,
+    'Left':               colors.error,
+    'Moved':              colors.info,
+    'Server Muted':       colors.moderation,
+    'Server Unmuted':     colors.success,
+    'Server Deafened':   colors.moderation,
+    'Server Undeafened': colors.success,
+    'Screen Share Started': colors.info,
+    'Screen Share Stopped': colors.warning,
+    'Camera Enabled':       colors.success,
+    'Camera Disabled':      colors.warning,
   };
+
+  const channelValue = data.channelId
+    ? `${data.channel || 'Unknown'}\n<#${data.channelId}>\n\`${data.channelId}\``
+    : (data.channel || 'N/A');
+  const movementValue = data.from || data.to
+    ? `From: ${data.from || 'N/A'}${data.fromId ? `\n\`${data.fromId}\`` : ''}\nTo: ${data.to || 'N/A'}${data.toId ? `\n\`${data.toId}\`` : ''}`
+    : null;
+  const stateValue = [
+    `Self mute: ${data.selfMute ? 'Yes' : 'No'}`,
+    `Self deaf: ${data.selfDeaf ? 'Yes' : 'No'}`,
+    `Server mute: ${data.serverMute ? 'Yes' : 'No'}`,
+    `Server deaf: ${data.serverDeaf ? 'Yes' : 'No'}`,
+  ].join('\n');
+  const mediaValue = [
+    `Camera / video: ${data.video ? 'ON' : 'OFF'}`,
+    `Screen share / stream: ${data.streaming ? 'ON' : 'OFF'}`,
+  ].join('\n');
 
   const embed = new EmbedBuilder()
     .setColor(COLOR_MAP[data.action] ?? colors.info)
@@ -256,12 +294,26 @@ async function logVoice(client, guild, data) {
     .setAuthor({ name: data.user, iconURL: data.userAvatar || undefined })
     .addFields(
       { name: `${e('member')} User`,        value: `<@${data.userId}>\n\`${data.user}\`\n\`${data.userId}\``, inline: true },
-      { name: `${e('voice')} Channel`,      value: data.channel || 'N/A',                                     inline: true },
-      { name: `${e('calendar')} Timestamp`, value: `<t:${Math.floor(Date.now() / 1000)}:F>\n${formatIST()}`,  inline: true },
+      { name: `${e('server')} Server`,      value: `${guild.name}\n\`${guild.id}\``,                         inline: true },
+      { name: `${e('info')} Event`,         value: `\`${data.action}\``,                                      inline: true },
+      { name: `${e('voice')} Channel`,      value: channelValue,                                             inline: true },
+      { name: `${e('calendar')} Timestamp`, value: `<t:${Math.floor(Date.now() / 1000)}:F>\n${formatIST()}`, inline: true },
+      { name: `${e('info')} Voice State`,   value: stateValue,                                               inline: false },
+      { name: `${e('info')} Camera / Stream`, value: mediaValue,                                             inline: true },
     );
 
-  if (data.from) embed.addFields({ name: `${e('cross')} From`, value: `\`${data.from}\``, inline: true });
-  if (data.to)   embed.addFields({ name: `${e('check')} To`,   value: `\`${data.to}\``,   inline: true });
+  if (movementValue) {
+    embed.addFields({ name: `${e('cross')} Channel Movement`, value: movementValue, inline: false });
+  }
+  if (Number.isFinite(data.vcDurationMs)) {
+    embed.addFields({ name: `${e('clock')} Time in VC`, value: `\`${formatDuration(data.vcDurationMs)}\``, inline: true });
+  }
+  if (Number.isFinite(data.streamDurationMs)) {
+    embed.addFields({ name: `${e('voice')} Time Streaming`, value: `\`${formatDuration(data.streamDurationMs)}\``, inline: true });
+  }
+  if (Number.isFinite(data.videoDurationMs)) {
+    embed.addFields({ name: `${e('voice')} Time on Camera`, value: `\`${formatDuration(data.videoDurationMs)}\``, inline: true });
+  }
 
   embed.setFooter(makeFooter(client, 'Voice Log')).setTimestamp();
   await sendLog(client, guild.id, 'voiceLogs', embed);
@@ -349,18 +401,34 @@ async function logPurge(client, guild, data) {
 }
 
 // ─── Command Usage Log ────────────────────────────────────────────────────────
-async function logCommandUsage(client, interaction, args = {}) {
+function safeCommandValue(key, value) {
+  if (/token|password|secret|api[-_]?key|credential/i.test(key)) return '[REDACTED]';
+  if (value === undefined || value === null || value === '') return 'None';
+  return String(value).replace(/`/g, '\'').slice(0, 240);
+}
+
+async function logCommandUsage(client, interaction, args = {}, result = {}) {
   try {
+    const status = result.status === 'FAILED' ? 'FAILED' : 'SUCCESS';
+    const durationMs = Number.isFinite(result.durationMs) ? Math.max(0, Math.round(result.durationMs)) : null;
+    const errorMessage = result.error?.message ? String(result.error.message).slice(0, 500) : null;
+
     await CommandLog.create({
-      guildId:     interaction.guildId,
+      guildId:     interaction.guildId || 'DM',
       userId:      interaction.user.id,
-      userTag:     interaction.user.username,
+      userTag:     interaction.user.tag || interaction.user.username,
       command:     interaction.commandName,
       channelId:   interaction.channelId,
       channelName: interaction.channel?.name,
       args,
+      guildName:   interaction.guild?.name,
+      interactionId: interaction.id,
+      status,
+      durationMs,
+      errorMessage,
     });
 
+    if (!interaction.guildId) return;
     const config    = await getConfig(interaction.guildId);
     const channelId = config.logging.commandLogs;
     if (!channelId) return;
@@ -368,24 +436,31 @@ async function logCommandUsage(client, interaction, args = {}) {
     if (!channel) return;
 
     const embed = new EmbedBuilder()
-      .setColor(colors.neutral)
-      .setTitle(`${e('log')} Command Used — /${interaction.commandName}`)
+      .setColor(status === 'SUCCESS' ? colors.success : colors.error)
+      .setTitle(`${e(status === 'SUCCESS' ? 'check' : 'error')} Command ${status === 'SUCCESS' ? 'Completed' : 'Failed'} — /${interaction.commandName}`)
       .setAuthor({
-        name:    interaction.user.username,
+        name:    interaction.user.tag || interaction.user.username,
         iconURL: interaction.user.displayAvatarURL({ size: 64 }),
       })
       .addFields(
-        { name: `${e('member')} User`,        value: `<@${interaction.user.id}>\n\`${interaction.user.username}\`\n\`${interaction.user.id}\``, inline: true },
-        { name: `${e('channel')} Channel`,    value: `<#${interaction.channelId}>\n\`${interaction.channel?.name}\``,                          inline: true },
-        { name: `${e('calendar')} Timestamp`, value: `<t:${Math.floor(Date.now() / 1000)}:F>\n${formatIST()}`,                                 inline: true },
+        { name: `${e('member')} User`,        value: `<@${interaction.user.id}>\n\`${interaction.user.tag || interaction.user.username}\`\n\`${interaction.user.id}\``, inline: true },
+        { name: `${e('server')} Server`,      value: `${interaction.guild.name}\n\`${interaction.guildId}\``,                                             inline: true },
+        { name: `${e('channel')} Channel`,    value: `<#${interaction.channelId}>\n\`${interaction.channel?.name || 'Unknown'}\`\n\`${interaction.channelId}\``, inline: true },
+        { name: `${e('info')} Result`,        value: `\`${status}\`${durationMs !== null ? `\nDuration: \`${durationMs}ms\`` : ''}`,                      inline: true },
+        { name: `${e('link')} Interaction`,   value: `\`${interaction.id}\``,                                                                          inline: true },
+        { name: `${e('calendar')} Timestamp`, value: `<t:${Math.floor(Date.now() / 1000)}:F>\n${formatIST()}`,                                          inline: true },
       );
 
     if (Object.keys(args).length > 0) {
       const argsStr = Object.entries(args)
-        .map(([k, v]) => `\`${k}\`: ${v}`)
+        .map(([k, v]) => `\`${k}\`: ${safeCommandValue(k, v)}`)
         .join('\n')
         .slice(0, 1024);
       embed.addFields({ name: `${e('info')} Arguments`, value: argsStr, inline: false });
+    }
+
+    if (errorMessage) {
+      embed.addFields({ name: `${e('error')} Error`, value: `\`${errorMessage.replace(/`/g, '\'')}\``, inline: false });
     }
 
     embed.setFooter(makeFooter(client, 'Command Log')).setTimestamp();
@@ -393,8 +468,43 @@ async function logCommandUsage(client, interaction, args = {}) {
   } catch { }
 }
 
+// ─── Bot Health Log ───────────────────────────────────────────────────────────
+async function logBotHealth(client, data = {}) {
+  const level = String(data.level || 'INFO').toUpperCase();
+  const color = level === 'CRITICAL' ? colors.error : level === 'ERROR' ? colors.warning : colors.info;
+  const error = data.error;
+  const errorMessage = error?.message || (error ? String(error) : null);
+  const stack = error?.stack && error.stack !== errorMessage ? error.stack : null;
+
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(`${e(level === 'INFO' ? 'info' : level === 'CRITICAL' ? 'error' : 'warning')} Bot Health — ${data.title || level}`)
+    .addFields(
+      { name: `${e('info')} Status`,    value: `\`${level}\``, inline: true },
+      { name: `${e('log')} Source`,     value: `\`${String(data.source || 'System').slice(0, 100)}\``, inline: true },
+      { name: `${e('calendar')} Time`,  value: `<t:${Math.floor(Date.now() / 1000)}:F>\n${formatIST()}`, inline: true },
+    )
+    .setFooter(makeFooter(client, 'Bot Health Log'))
+    .setTimestamp();
+
+  if (data.details) {
+    embed.addFields({ name: `${e('info')} Details`, value: String(data.details).slice(0, 1024), inline: false });
+  }
+  if (data.guildId) {
+    embed.addFields({ name: `${e('server')} Guild`, value: `${data.guildName || 'Unknown'}\n\`${data.guildId}\``, inline: true });
+  }
+  if (errorMessage) {
+    embed.addFields({ name: `${e('error')} Error`, value: `\`${String(errorMessage).replace(/`/g, '\'').slice(0, 1000)}\``, inline: false });
+  }
+  if (stack) {
+    embed.addFields({ name: `${e('log')} Stack`, value: `\`\`\`${stack.replace(/```/g, '\'\'\'').slice(0, 1000)}\`\`\``, inline: false });
+  }
+
+  await sendLog(client, data.guildId || process.env.GUILD_ID, 'bothealthLogs', embed, [], { fallback: false });
+}
+
 module.exports = {
   sendLog, getConfig,
   logModAction, logMessage, logWelcome, logVoice,
-  logChannel, logInvite, logPurge, logCommandUsage,
+  logChannel, logInvite, logPurge, logCommandUsage, logBotHealth,
 };
