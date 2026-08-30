@@ -30,6 +30,9 @@ module.exports = {
       });
     }
 
+    // Acknowledge before database, case, DM, and logging work.
+    await interaction.deferReply();
+
     let warningDoc = await Warning.findOne({ guildId: interaction.guildId, userId: targetUser.id });
     if (!warningDoc) {
       warningDoc = new Warning({ guildId: interaction.guildId, userId: targetUser.id, userTag: targetUser.tag, warnings: [] });
@@ -79,6 +82,6 @@ module.exports = {
       .setFooter(makeFooter(client, `by ${interaction.user.username}  ·  Warn #${warnId}`))
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
