@@ -18,10 +18,14 @@ module.exports = {
 
     const trigger = interaction.options.getString('trigger').toLowerCase();
     const client  = interaction.client;
+
+    // Acknowledge before deleting the trigger from MongoDB.
+    await interaction.deferReply();
+
     const deleted = await Trigger.findOneAndDelete({ guildId: interaction.guildId, trigger });
 
     if (!deleted) {
-      return interaction.reply({
+      return interaction.editReply({
         embeds: [
           new EmbedBuilder()
             .setColor(colors.error)
@@ -30,7 +34,6 @@ module.exports = {
             .setFooter(makeFooter(client))
             .setTimestamp(),
         ],
-        ephemeral: true,
       });
     }
 
@@ -43,6 +46,6 @@ module.exports = {
       .setFooter(makeFooter(client))
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
