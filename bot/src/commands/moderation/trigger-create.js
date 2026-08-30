@@ -19,6 +19,9 @@ module.exports = {
     const response = interaction.options.getString('response');
     const client   = interaction.client;
 
+    // Acknowledge before creating the trigger in MongoDB.
+    await interaction.deferReply();
+
     try {
       await Trigger.create({
         guildId:   interaction.guildId,
@@ -37,10 +40,10 @@ module.exports = {
         .setFooter(makeFooter(client))
         .setTimestamp();
 
-      await interaction.reply({ embeds: [embed] });
+      await interaction.editReply({ embeds: [embed] });
     } catch (err) {
       if (err.code === 11000) {
-        return interaction.reply({
+        return interaction.editReply({
           embeds: [
             new EmbedBuilder()
               .setColor(colors.error)
@@ -49,7 +52,6 @@ module.exports = {
               .setFooter(makeFooter(client))
               .setTimestamp(),
           ],
-          ephemeral: true,
         });
       }
       throw err;
