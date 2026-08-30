@@ -10,7 +10,7 @@ const LOG_CHANNELS = {
   automodLogs:    '1342070704023011348',
   commandLogs:    '1343476541254013011',
   channelLogs:    '1343476487726043167',
-  
+  bothealthLogs:  '1543619012422926387',
 };
 
 async function seedGuildConfig() {
