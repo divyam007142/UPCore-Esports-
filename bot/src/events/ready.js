@@ -4,6 +4,7 @@ const { startReminderService } = require('../services/reminderService');
 const { loadEmojis, loadedNames } = require('../utils/emoji');
 const { EMOJI_NAMES } = require('../config/config');
 const { seedGuildConfig } = require('../utils/seedGuildConfig');
+const { logBotHealth } = require('../services/logService');
 
 module.exports = {
   name: Events.ClientReady,
@@ -53,6 +54,15 @@ module.exports = {
 
     // ── Seed log channels into MongoDB ───────────────────────────────────────
     await seedGuildConfig();
+
+    await logBotHealth(client, {
+      level: 'INFO',
+      title: 'Online',
+      source: 'ClientReady',
+      guildId: process.env.GUILD_ID,
+      guildName: client.guilds.cache.first()?.name,
+      details: `Connected successfully. ${client.commands?.size ?? 0} commands and ${client.guilds.cache.size} guild(s) are active.`,
+    });
 
     // ── Start reminder service ────────────────────────────────────────────────
     startReminderService(client);
