@@ -19,6 +19,9 @@ module.exports = {
     const targetUser = interaction.options.getUser('user');
     const content    = interaction.options.getString('content');
 
+    // Acknowledge before the database write.
+    await interaction.deferReply();
+
     let noteDoc = await Note.findOne({ guildId: interaction.guildId, userId: targetUser.id });
     if (!noteDoc) {
       noteDoc = new Note({ guildId: interaction.guildId, userId: targetUser.id, userTag: targetUser.tag, notes: [] });
@@ -42,6 +45,6 @@ module.exports = {
       .setFooter(makeFooter(client, `Note #${noteId} — Staff only`))
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
