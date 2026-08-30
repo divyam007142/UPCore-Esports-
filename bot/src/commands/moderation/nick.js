@@ -20,13 +20,15 @@ module.exports = {
     const targetUser = interaction.options.getUser('user');
     const nickname   = interaction.options.getString('nickname') ?? null;
 
+    // Acknowledge before fetching and updating the member.
+    await interaction.deferReply();
+
     let member;
     try {
       member = await interaction.guild.members.fetch(targetUser.id);
     } catch {
-      return interaction.reply({
+      return interaction.editReply({
         embeds: [new EmbedBuilder().setColor(colors.error).setDescription(`${emojis.cross}  That user is not in this server.`).setFooter(makeFooter(client))],
-        ephemeral: true,
       });
     }
 
@@ -43,6 +45,6 @@ module.exports = {
       .setFooter(makeFooter(client, `by ${interaction.user.username}`))
       .setTimestamp();
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed] });
   },
 };
