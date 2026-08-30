@@ -36,7 +36,10 @@ module.exports = {
 
     // ── Button Interactions ────────────────────────────────────────────────────
     if (interaction.isButton()) {
-      const btn = client.buttons.get(interaction.customId);
+      const btn = client.buttons.get(interaction.customId) ||
+        [...client.buttons.values()].find(candidate =>
+          candidate.prefix && interaction.customId.startsWith(candidate.prefix)
+        );
       if (!btn) return;
       try {
         await btn.execute(interaction, client);
