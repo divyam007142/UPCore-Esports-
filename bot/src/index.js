@@ -7,14 +7,18 @@ const { loadEvents } = require('./handlers/eventHandler');
 const { loadButtons } = require('./handlers/buttonHandler');
 const { loadModals } = require('./handlers/modalHandler');
 const { loadSelectMenus } = require('./handlers/selectMenuHandler');
-const { printStartupBanner, logError } = require('./utils/console');
+const { printStartupBanner, logError, logWarn } = require('./utils/console');
+const { logBotHealth } = require('./services/logService');
 
 // ─── Global crash guards ──────────────────────────────────────────────────────
 process.on('unhandledRejection', (reason) => {
-  logError('UnhandledRejection', reason instanceof Error ? reason : new Error(String(reason)));
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  logError('UnhandledRejection', error);
+  void logBotHealth(client, { level: 'ERROR', title: 'Unhandled Rejection', source: 'Process', error });
 });
 process.on('uncaughtException', (err) => {
   logError('UncaughtException', err);
+  void logBotHealth(client, { level: 'CRITICAL', title: 'Uncaught Exception', source: 'Process', error: err });
 });
 
 const client = new Client({
@@ -37,6 +41,16 @@ const client = new Client({
     Partials.GuildMember,
     Partials.User,
   ],
+});
+
+client.on('error', (error) => {
+  logError('DiscordClient', error);
+  void logBotHealth(client, { level: 'ERROR', title: 'Discord Client Error', source: 'Discord Client', error });
+});
+
+client.on('warn', (message) => {
+  logWarn('DiscordClient', message);
+  void logBotHealth(client, { level: 'INFO', title: 'Discord Client Warning', source: 'Discord Client', details: message });
 });
 
 client.commands    = new Collection();
