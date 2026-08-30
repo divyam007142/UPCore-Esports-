@@ -8,7 +8,7 @@ const fs   = require('fs');
 
 const SCREENSHOT_EXAMPLE_PATH = path.join(__dirname, '../../assets/screenshot-example.jpg');
 
-const PREFIX = '~';
+const PREFIX = '!';
 const PREFIX_COOLDOWN_MS = 8_000;
 const prefixCooldowns = new Map();
 
