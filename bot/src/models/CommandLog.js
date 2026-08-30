@@ -7,6 +7,11 @@ const commandLogSchema = new mongoose.Schema({
   command: { type: String, required: true },
   channelId: { type: String },
   channelName: { type: String },
+  guildName: { type: String },
+  interactionId: { type: String },
+  status: { type: String, enum: ['SUCCESS', 'FAILED'], default: 'SUCCESS' },
+  durationMs: { type: Number },
+  errorMessage: { type: String },
   args: { type: Object, default: {} },
   executedAt: { type: Date, default: Date.now },
 });
