@@ -1,14 +1,16 @@
 const GuildConfig = require('../models/GuildConfig');
 
 const LOG_CHANNELS = {
-  messageLogs:    '1393289211397804224',
-  moderationLogs: '1522153801753034824',
-  welcomeLogs:    '1522124941170966528',
-  voiceLogs:      '1393289302921838592',
-  inviteLogs:     '1393289372786495548',
-  purgeLogs:      '1522154277374660700',
-  commandLogs:    '1393290804197331158',
-  channelLogs:    '1395064433159569419',
+  messageLogs:    '1343476104870105100',
+  moderationLogs: '1517451780907335680',
+  welcomeLogs:    '1343476437788790835',
+  voiceLogs:      '1343502935325278208',
+  inviteLogs:     '1517452146331619368',
+  purgeLogs:      '1431879869054320713',
+  automodLogs:    '1342070704023011348',
+  commandLogs:    '1343476541254013011',
+  channelLogs:    '1343476487726043167',
+  
 };
 
 async function seedGuildConfig() {
