@@ -131,6 +131,7 @@ async function logMessageDelete(client, guild, data) {
     mediaAttachments.slice(0, 3).map((attachment, index) => fetchLogMedia(attachment, index)),
   );
   const media = mediaResults.filter(Boolean);
+  const hasEmbed = data.message?.embeds?.length > 0;
 
   const embed = new EmbedBuilder()
     .setColor(colors.error)
@@ -156,7 +157,9 @@ async function logMessageDelete(client, guild, data) {
     name:  `${e('log')} Message Content`,
     value: data.content
       ? `\`\`\`${data.content.slice(0, 950)}\`\`\``
-      : '`[No text content — possibly an embed or attachment]`',
+      : hasEmbed
+        ? '`[Embed content is attached as an HTML transcript]`'
+        : '`[No text content — possibly an attachment]`',
     inline: false,
   });
 
@@ -180,7 +183,22 @@ async function logMessageDelete(client, guild, data) {
   }
 
   embed.setFooter(makeFooter(client, 'Message Log')).setTimestamp();
-  await sendLog(client, guild.id, 'messageLogs', embed, media.map(({ buffer, name }) => ({ attachment: buffer, name })));
+
+  const files = media.map(({ buffer, name }) => ({ attachment: buffer, name }));
+  if (hasEmbed) {
+    try {
+      const report = await generatePurgeTranscript(guild, [data.message], {
+        channelId: data.channelId,
+        count: 1,
+        moderator: data.deletedBy || 'Unknown',
+        moderatorId: data.deletedById || '',
+        reportType: 'embed-delete',
+      });
+      files.push({ attachment: report, name: 'deleted-embed.html' });
+    } catch { /* Keep the existing message log if transcript generation fails. */ }
+  }
+
+  await sendLog(client, guild.id, 'messageLogs', embed, files);
 }
 
 // ─── Message Edit Log ──────────────────────────────────────────────────────────
@@ -380,7 +398,7 @@ async function logPurge(client, guild, data) {
     embed.addFields({ name: `${e('member')} Filter — User`, value: `\`${data.filterUser}\``, inline: true });
   }
 
-  const messages = Array.isArray(data.messages) ? data.messages : [];
+  const messages = Array.isArray(data.messages) ? data.messages.filter(Boolean) : [];
   const orderedMessages = messages
     .slice()
     .sort((a, b) => (a.createdTimestamp || 0) - (b.createdTimestamp || 0));
@@ -393,7 +411,9 @@ async function logPurge(client, guild, data) {
     inline: false,
   });
   embed.setFooter(makeFooter(client, 'Purge Log')).setTimestamp();
-  const report = await generatePurgeTranscript(guild, orderedMessages, data);
+  const report = Buffer.isBuffer(data.report)
+    ? data.report
+    : await generatePurgeTranscript(guild, orderedMessages, data);
   await sendLog(client, guild.id, 'purgeLogs', embed, [{
     attachment: report,
     name: 'purge-all.html',
