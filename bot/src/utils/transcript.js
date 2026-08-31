@@ -255,6 +255,222 @@ function renderMessage(msg, memberMap, roleMap, assetMap) {
   </div>`;
 }
 
+// Purge reports use their own media pipeline. Keep this separate from the
+// ticket transcript helpers above so ticket transcripts retain their existing
+// behavior and output.
+const PURGE_MIME_BY_EXTENSION = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  m4v: 'video/x-m4v',
+  ogv: 'video/ogg',
+  ogg: 'video/ogg',
+};
+
+function purgeMediaUrls(media) {
+  return [media?.url, media?.proxyURL].filter(Boolean);
+}
+
+function purgeMimeFromHint(hint = '') {
+  const value = String(hint);
+  if (/^(image|video)\//i.test(value)) return value.toLowerCase();
+  const extension = value.match(/\.([a-z0-9]+)(?:$|[?#])/i)?.[1]?.toLowerCase();
+  return extension ? PURGE_MIME_BY_EXTENSION[extension] || null : null;
+}
+
+function sniffPurgeMediaMime(buffer) {
+  if (!buffer || buffer.length < 4) return null;
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return 'image/jpeg';
+  if (buffer.subarray(0, 6).toString('ascii') === 'GIF87a' || buffer.subarray(0, 6).toString('ascii') === 'GIF89a') return 'image/gif';
+  if (buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp';
+  if (buffer.subarray(4, 8).toString('ascii') === 'ftyp') return 'video/mp4';
+  if (buffer.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) return 'video/webm';
+  return null;
+}
+
+async function downloadPurgeMediaAsDataUri(url, hint = '') {
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(15000),
+      headers: {
+        Accept: 'image/*,video/*,application/octet-stream;q=0.9,*/*;q=0.1',
+        'User-Agent': 'UPCORE-Esports-Purge-Transcript/1.0',
+      },
+    });
+    if (!response.ok) return null;
+
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > 16 * 1024 * 1024) return null;
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > 16 * 1024 * 1024) return null;
+
+    const responseType = (response.headers.get('content-type') || '').split(';')[0].toLowerCase();
+    const extension = url.match(/\.([a-z0-9]+)(?:$|[?#])/i)?.[1]?.toLowerCase();
+    const responseMime = /^(image|video)\//i.test(responseType) ? responseType : null;
+    const mime = responseMime || sniffPurgeMediaMime(buffer) || purgeMimeFromHint(hint) || PURGE_MIME_BY_EXTENSION[extension];
+    if (!mime) return null;
+
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  } catch {
+    return null;
+  }
+}
+
+async function preloadPurgeMedia(messages) {
+  const urls = new Map();
+  const addMedia = (url, hint = '') => {
+    if (url && !urls.has(url)) urls.set(url, hint);
+  };
+
+  for (const msg of messages) {
+    const embeds = msg.embeds ?? [];
+    const content = [
+      msg.content || '',
+      ...embeds.flatMap(embed => [
+        embed.description || '',
+        embed.title || '',
+        embed.author?.name || '',
+        ...(embed.fields || []).flatMap(field => [field.name || '', field.value || '']),
+        embed.footer?.text || '',
+      ]),
+    ].join('\n');
+
+    for (const [, animated, name, id] of content.matchAll(/<(a?):([^:>]+):(\d+)>/g)) {
+      const emoji = customEmojiUrl(`<${animated}:${name}:${id}>`);
+      if (emoji) addMedia(emoji.url, emoji.url);
+    }
+
+    for (const att of msg.attachments.values()) {
+      const hint = att.contentType || att.name || att.url;
+      const urlsForAttachment = purgeMediaUrls(att);
+      if (att.contentType?.startsWith('image/') || isImageUrl(att.url) || isImageUrl(att.name)) {
+        urlsForAttachment.forEach(url => addMedia(url, hint));
+      }
+      if (att.contentType?.startsWith('video/') || isVideoUrl(att.url) || isVideoUrl(att.name)) {
+        urlsForAttachment.forEach(url => addMedia(url, hint));
+      }
+    }
+
+    for (const embed of embeds) {
+      if (embed.image?.url) addMedia(embed.image.url, 'image/png');
+      if (embed.image?.proxyURL) addMedia(embed.image.proxyURL, 'image/png');
+      if (embed.thumbnail?.url) addMedia(embed.thumbnail.url, 'image/png');
+      if (embed.thumbnail?.proxyURL) addMedia(embed.thumbnail.proxyURL, 'image/png');
+      if (embed.video?.url) addMedia(embed.video.url, 'video/mp4');
+      if (embed.video?.proxyURL) addMedia(embed.video.proxyURL, 'video/mp4');
+    }
+  }
+
+  const entries = await Promise.all(
+    [...urls.entries()].map(async ([url, hint]) => [url, await downloadPurgeMediaAsDataUri(url, hint)]),
+  );
+  return new Map(entries.filter(([, dataUri]) => dataUri));
+}
+
+function purgeDataUriMime(dataUri, fallback = 'video/mp4') {
+  return String(dataUri).match(/^data:([^;,]+)/i)?.[1] || fallback;
+}
+
+function renderPurgeEmbed(embed, assetMap, memberMap, roleMap) {
+  const bc = embed.color ? `#${embed.color.toString(16).padStart(6, '0')}` : '#5865F2';
+  let html = `<div class="embed" style="border-color:${bc}">`;
+  if (embed.author?.name) html += `<div class="embed-author">${renderRichText(embed.author.name, assetMap, memberMap, roleMap)}</div>`;
+  if (embed.title) html += `<div class="embed-title">${renderRichText(embed.title, assetMap, memberMap, roleMap)}</div>`;
+  if (embed.description) html += `<div class="embed-desc">${renderRichText(embed.description, assetMap, memberMap, roleMap).replace(/\n/g, '<br>')}</div>`;
+
+  if (embed.fields?.length) {
+    html += `<div class="embed-fields">`;
+    for (const field of embed.fields) {
+      html += `<div class="embed-field${field.inline ? ' inline' : ''}">` +
+        `<div class="embed-fname">${renderRichText(field.name, assetMap, memberMap, roleMap)}</div>` +
+        `<div class="embed-fval">${renderRichText(field.value, assetMap, memberMap, roleMap).replace(/\n/g, '<br>')}</div>` +
+        `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  if (embed.image?.url) {
+    const image = assetMap.get(embed.image.url) || assetMap.get(embed.image.proxyURL);
+    html += image
+      ? `<div class="embed-img"><img src="${escapeHtml(image)}" alt="embed image"></div>`
+      : `<div class="embed-media-missing">Embed image could not be archived</div>`;
+  }
+  if (embed.thumbnail?.url) {
+    const thumbnail = assetMap.get(embed.thumbnail.url) || assetMap.get(embed.thumbnail.proxyURL);
+    html += thumbnail
+      ? `<div class="embed-thumb"><img src="${escapeHtml(thumbnail)}" alt="embed thumbnail"></div>`
+      : `<div class="embed-media-missing">Embed thumbnail could not be archived</div>`;
+  }
+  if (embed.video?.url) {
+    const video = assetMap.get(embed.video.url) || assetMap.get(embed.video.proxyURL);
+    html += video
+      ? `<div class="embed-video"><video controls playsinline preload="metadata"><source src="${escapeHtml(video)}" type="${escapeHtml(purgeDataUriMime(video))}"></video></div>`
+      : `<div class="embed-media-missing">Embed video could not be archived</div>`;
+  }
+  if (embed.footer?.text) html += `<div class="embed-footer">${renderRichText(embed.footer.text, assetMap, memberMap, roleMap)}</div>`;
+  html += `</div>`;
+  return html;
+}
+
+function renderPurgeMessage(msg, memberMap, roleMap, assetMap) {
+  const info = memberMap.get(msg.author.id) ?? {};
+  const dname = info.displayName || msg.author.globalName || msg.author.username || 'Unknown';
+  const tag = info.tag || msg.author.tag;
+  const isBot = info.isBot ?? msg.author.bot;
+  const topRole = info.topRole;
+  const ts = `${formatTs(msg.createdTimestamp)} IST · ${formatRelativeTs(msg.createdTimestamp)}`;
+  const avatar = msg.author.displayAvatarURL({ size: 64, extension: 'png' });
+  const nameColor = topRole ? topRole.color : (isBot ? '#00D4FF' : '#e0e0e0');
+  const roleBadge = topRole
+    ? `<span class="role-badge" style="color:${topRole.color};border-color:${topRole.color}">${escapeHtml(topRole.name)}</span>`
+    : (isBot ? `<span class="bot-badge">APP</span>` : '');
+
+  let body = '';
+  if (msg.content) body += `<div class="msg-text">${renderRichText(msg.content, assetMap, memberMap, roleMap).replace(/\n/g, '<br>')}</div>`;
+  for (const embed of msg.embeds ?? []) body += renderPurgeEmbed(embed, assetMap, memberMap, roleMap);
+
+  for (const att of msg.attachments.values()) {
+    const media = assetMap.get(att.url) || assetMap.get(att.proxyURL);
+    if (att.contentType?.startsWith('image/') || isImageUrl(att.url) || isImageUrl(att.name)) {
+      body += media
+        ? `<div class="attachment"><img src="${escapeHtml(media)}" alt="${escapeHtml(att.name ?? '')}"></div>`
+        : `<div class="attachment file-att"><span class="file-icon">🖼️</span>${escapeHtml(att.name ?? 'image')} could not be archived</div>`;
+    } else if (att.contentType?.startsWith('video/') || isVideoUrl(att.url) || isVideoUrl(att.name)) {
+      body += media
+        ? `<div class="attachment video-att"><video controls playsinline preload="metadata"><source src="${escapeHtml(media)}" type="${escapeHtml(purgeDataUriMime(media, att.contentType || 'video/mp4'))}"></video></div>`
+        : `<div class="attachment file-att"><span class="file-icon">🎬</span>${escapeHtml(att.name ?? 'video')} could not be archived</div>`;
+    } else {
+      body += `<div class="attachment file-att"><span class="file-icon">📄</span><a href="${escapeHtml(att.url)}" target="_blank" rel="noopener">${escapeHtml(att.name ?? 'file')}</a></div>`;
+    }
+  }
+  if (!body) return '';
+
+  return `
+  <div class="message">
+    <img class="avatar" src="${avatar}" alt="">
+    <div class="msg-body">
+      <div class="msg-header">
+        <span class="author" style="color:${nameColor}" title="${escapeHtml(tag)}">${escapeHtml(dname)}</span>
+        ${roleBadge}
+        <span class="ts">${ts}</span>
+      </div>
+      ${body}
+    </div>
+  </div>`;
+}
+
 function renderFormData(formData, assetMap = new Map()) {
   if (!formData || !Object.keys(formData).length) return '';
   let rows = '';
@@ -423,6 +639,8 @@ ${sorted.map(m => renderMessage(m, memberMap, roleMap, assetMap)).filter(Boolean
 
 async function generatePurgeTranscript(guild, messages, data) {
   const sorted = [...(messages ?? [])].sort((a, b) => (a.createdTimestamp || 0) - (b.createdTimestamp || 0));
+  const isEmbedDelete = data.reportType === 'embed-delete';
+  const reportLabel = isEmbedDelete ? 'Deleted Embed Message' : 'Purge All';
   const userIds = new Set(sorted.map(message => message.author?.id).filter(Boolean));
   const roleIds = new Set();
   const mentionText = sorted.map(message => [
@@ -449,7 +667,7 @@ async function generatePurgeTranscript(guild, messages, data) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Purge All — ${escapeHtml(channelName)}</title>
+<title>${escapeHtml(reportLabel)} — ${escapeHtml(channelName)}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#111;color:#dcddde;font-family:'Segoe UI',sans-serif;font-size:14px;line-height:1.5}
@@ -463,20 +681,22 @@ h1{font-size:25px;color:#fff;margin-bottom:13px}
 .message{display:flex;align-items:flex-start;gap:14px;padding:9px 28px;margin:2px 16px;border-radius:7px}.message:hover{background:#1a1c1e}
 .avatar{width:42px;height:42px;border-radius:50%;flex-shrink:0}.msg-body{flex:1;min-width:0}
 .msg-header{display:flex;align-items:baseline;flex-wrap:wrap;gap:7px;margin-bottom:4px}
-.author{font-weight:700;font-size:14px}.tag{color:#72767d;font-size:11px}.role{font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;border:1px solid}
+.author{font-weight:700;font-size:14px}.tag{color:#72767d;font-size:11px}.bot-badge{background:#5865f2;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:3px;letter-spacing:.5px}.role-badge{font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;border:1px solid}
 .ts{color:#72767d;font-size:11px}.msg-text{color:#dcddde;word-break:break-word;white-space:pre-wrap}
 .emoji{width:1.35em;height:1.35em;vertical-align:-.32em;object-fit:contain;margin:0 .08em}
-.attachment img{display:block;max-width:520px;max-height:360px;border-radius:6px;margin-top:8px}.video{display:block;width:100%;max-width:600px;max-height:420px;margin-top:8px;background:#090b10;border-radius:6px}
+.embed{border-left:4px solid #5865f2;background:#1e1f22;border-radius:0 6px 6px 0;padding:12px 14px;margin:6px 0;max-width:520px;overflow-wrap:anywhere}.embed-author{font-size:12px;color:#b9bbbe;font-weight:600;margin-bottom:4px}.embed-title{font-size:15px;font-weight:700;color:#fff;margin-bottom:6px}.embed-desc{color:#b9bbbe;font-size:13px;margin-bottom:8px;line-height:1.5}.embed-fields{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}.embed-field{min-width:120px;flex:1 1 160px}.embed-field.inline{max-width:200px}.embed-fname{font-size:11px;font-weight:700;color:#e0e0e0;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px}.embed-fval{font-size:13px;color:#b9bbbe}.embed-img img{display:block;max-width:100%;max-height:280px;border-radius:4px;margin-top:8px}.embed-thumb img{display:block;max-width:160px;max-height:160px;border-radius:4px;margin-top:8px}.embed-video video{display:block;width:100%;max-height:360px;margin-top:8px;border-radius:4px;background:#090b10}.embed-media-missing{color:#72767d;font-size:12px;font-style:italic;margin-top:8px}.embed-footer{font-size:11px;color:#72767d;margin-top:8px;border-top:1px solid #2b2d31;padding-top:6px}
+.attachment,.video-att,.file-att{max-width:100%;min-width:0}.attachment img{display:block;max-width:100%;height:auto;max-height:360px;border-radius:6px;margin-top:8px}.video-att video{display:block;width:100%;max-width:100%;height:auto;max-height:420px;margin-top:8px;background:#090b10;border-radius:6px}.video{display:block;width:100%;max-width:600px;max-height:420px;margin-top:8px;background:#090b10;border-radius:6px}.file-att{display:flex;align-items:flex-start;gap:7px;margin-top:8px;overflow-wrap:anywhere;word-break:break-word}.file-att a{min-width:0;overflow-wrap:anywhere;word-break:break-word}
 .file{display:inline-flex;gap:7px;margin-top:8px;background:#1e2128;border:1px solid #2d3039;padding:7px 11px;border-radius:6px}
 .footer{border-top:1px solid #25272d;background:#0a0a0a;padding:14px 34px;text-align:center;color:#72767d;font-size:11px}
-@media(max-width:600px){body{font-size:13px}.header{padding:21px 16px 18px}h1{font-size:21px}.meta{display:grid;grid-template-columns:1fr;gap:6px}.section{padding:0 14px 8px}.message{gap:9px;padding:8px 9px;margin:2px 6px}.avatar{width:34px;height:34px}.author{font-size:13px}.ts,.tag{font-size:10px}.attachment img{max-width:100%;height:auto;max-height:none}.video{max-height:none}}
+html,body{width:100%;max-width:100%;overflow-x:hidden}img,video{max-width:100%}
+@media(max-width:600px){body{font-size:13px}.header{padding:21px 16px 18px;overflow-wrap:anywhere}.header h1{font-size:21px;line-height:1.25}.meta{display:grid;grid-template-columns:minmax(0,1fr);gap:6px}.meta>div{min-width:0;overflow-wrap:anywhere;word-break:break-word}.section{padding:0 14px 8px}.message{display:grid;grid-template-columns:34px minmax(0,1fr);gap:9px;padding:8px 9px;margin:2px 6px;max-width:calc(100% - 12px)}.msg-body{min-width:0;max-width:100%}.msg-header{min-width:0;gap:5px}.avatar{width:34px;height:34px}.author,.role-badge,.ts,.tag{max-width:100%;overflow-wrap:anywhere;word-break:break-word}.author{font-size:13px}.ts,.tag{font-size:10px}.embed{width:100%;max-width:100%;padding:11px 12px;margin:7px 0}.embed-fields{display:block}.embed-field,.embed-field.inline{max-width:none;min-width:0;margin-top:8px}.embed-title{font-size:14px;overflow-wrap:anywhere}.embed-desc,.embed-fval{font-size:12px;overflow-wrap:anywhere;word-break:break-word}.embed-img img{width:auto;max-width:100%;height:auto;max-height:none}.embed-thumb img{max-width:120px;max-height:120px}.embed-video video{width:100%;height:auto;max-height:none}.attachment{width:100%;max-width:100%;overflow:hidden}.attachment img{width:auto;max-width:100%;height:auto;max-height:none}.video-att video{width:100%;height:auto;max-height:none}.file-att{width:100%;max-width:100%}.file-att a{min-width:0;max-width:100%}.video{max-width:100%;max-height:none}}
 </style>
 </head>
 <body>
 <header class="header">
   <div class="brand">UPCORE <span>Esports</span> · Moderation Logs</div>
-  <div class="badge">Purge All</div>
-  <h1>${escapeHtml(data.count || sorted.length)} message${(data.count || sorted.length) === 1 ? '' : 's'} deleted from #${escapeHtml(channelName)}</h1>
+   <div class="badge">${escapeHtml(reportLabel)}</div>
+   <h1>${escapeHtml(data.count || sorted.length)} message${(data.count || sorted.length) === 1 ? '' : 's'} deleted from #${escapeHtml(channelName)}</h1>
   <div class="meta">
     <div><strong>Moderator:</strong> ${escapeHtml(moderator)} · <code>${escapeHtml(data.moderatorId || '')}</code></div>
     <div><strong>Channel:</strong> #${escapeHtml(channelName)} · <code>${escapeHtml(data.channelId || '')}</code></div>
@@ -484,11 +704,11 @@ h1{font-size:25px;color:#fff;margin-bottom:13px}
     <div><strong>Generated:</strong> ${escapeHtml(generatedAt)} IST</div>
   </div>
 </header>
-<div class="section">Deleted messages · mentions are resolved to names and roles</div>
+ <div class="section">${isEmbedDelete ? 'Deleted embed message · mentions are resolved to names and roles' : 'Deleted messages · mentions are resolved to names and roles'}</div>
 <main class="messages">
 ${sorted.map(message => renderMessage(message, memberMap, roleMap, assetMap)).filter(Boolean).join('\n')}
 </main>
-<footer class="footer">UPCORE Esports · Purge All · Generated ${escapeHtml(generatedAt)} IST</footer>
+ <footer class="footer">UPCORE Esports · ${escapeHtml(reportLabel)} · Generated ${escapeHtml(generatedAt)} IST</footer>
 </body>
 </html>`;
 
