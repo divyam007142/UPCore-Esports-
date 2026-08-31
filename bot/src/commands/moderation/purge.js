@@ -1,6 +1,7 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { checkAdminRole, checkBotPermissions } = require('../../utils/permissions');
 const { logPurge } = require('../../services/logService');
+const { generatePurgeTranscript } = require('../../utils/transcript');
 const { colors, emojis } = require('../../config/config');
 const { e } = require('../../utils/emoji');
 const { makeFooter } = require('../../utils/embeds');
@@ -78,15 +79,27 @@ module.exports = {
 
           let messages = await interaction.channel.messages.fetch({ limit: 100 });
           if (filterUser) messages = messages.filter(m => m.author.id === filterUser.id);
-          messages = messages.first(amount);
+          messages = messages.first(amount).filter(message =>
+            Date.now() - message.createdTimestamp < 14 * 24 * 60 * 60 * 1000
+          );
 
+          // Archive the complete report before deletion. Discord attachment
+          // CDN URLs may return 404 immediately after the message is deleted.
+          const report = await generatePurgeTranscript(interaction.guild, messages, {
+            moderator: interaction.user.tag,
+            moderatorId: interaction.user.id,
+            channelId: interaction.channelId,
+            count: messages.length,
+            filterUser: filterUser?.tag,
+          });
           const deleted = await interaction.channel.bulkDelete(messages, true);
 
           await logPurge(client, interaction.guild, {
             moderator: interaction.user.tag, moderatorId: interaction.user.id,
             channelId: interaction.channelId, count: deleted.size,
              filterUser: filterUser?.tag,
-             messages: [...deleted.values()],
+             messages,
+             report,
           });
 
           await btn.editReply({
